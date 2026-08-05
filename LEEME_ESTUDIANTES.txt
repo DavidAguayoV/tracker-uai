@@ -1,0 +1,46 @@
+========================================
+  TRACKER UAI - Instrucciones de uso
+========================================
+
+Aplicacion para analizar videos de laboratorios de fisica.
+
+----------------------------------------
+PASO 1 (solo una vez): Instalar Python
+----------------------------------------
+Si tu computador no tiene Python:
+  - Entra a  https://www.python.org/downloads/
+  - Descarga Python 3.11 o superior.
+  - IMPORTANTE: durante la instalacion, marca la casilla
+    "Add Python to PATH".
+  (Alternativa: instalar "Python 3.12" desde la Microsoft Store.)
+
+----------------------------------------
+PASO 2: Abrir el programa
+----------------------------------------
+  1. Descomprime esta carpeta (clic derecho -> Extraer todo).
+  2. Haz doble clic en:  Iniciar_Tracker_UAI.bat
+  3. La PRIMERA vez tarda unos minutos (instala lo necesario).
+     Las siguientes veces abre en pocos segundos.
+  4. Se abrira solo en tu navegador (Chrome, Edge, etc.).
+
+Si Windows muestra un aviso azul ("Windows protegio tu PC"):
+  clic en "Mas informacion" -> "Ejecutar de todas formas".
+
+----------------------------------------
+PASO 3: Usar
+----------------------------------------
+  - Sube tu video en la barra lateral.
+  - Avanza por las etapas: 1 Video -> ... -> 6 Exportar.
+  - Al final, descarga el CSV y los graficos.
+
+Para CERRAR el programa: cierra la ventana negra (terminal).
+
+----------------------------------------
+Problemas frecuentes
+----------------------------------------
+- "No se encontro Python": vuelve al PASO 1 (recuerda "Add to PATH").
+- El video .mov no carga o va muy lento: conviertelo a mp4 (H.264).
+- Videos largos: en la etapa 1, elige un INTERVALO corto de frames
+  para que procese solo el tramo que te interesa.
+
+Cualquier duda, escribe a tu profesor o ayudante.

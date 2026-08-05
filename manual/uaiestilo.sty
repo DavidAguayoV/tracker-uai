@@ -1,0 +1,442 @@
+%%%=============================================================================
+%%%  uaiestilo.sty --- Identidad visual compartida
+%%%  Cursos de Física --- Universidad Adolfo Ibáñez / FACH
+%%%  Prof. David Aguayo Vera
+%%%
+%%%  Este archivo concentra TODO lo institucional (colores, tipografía, cajas,
+%%%  estilo de código, encabezados). Lo usan por igual la plantilla de clases
+%%%  (Beamer) y la de apuntes (article), de modo que ambas se ven idénticas.
+%%%  Si algún día cambia la paleta o el logo, se edita SOLO este archivo.
+%%%
+%%%  Opciones del paquete:
+%%%    sinfira    -> no usa las fuentes Fira (fallback: Latin Modern Sans).
+%%%                  Útil si compilas en una instalación local incompleta.
+%%%    siniconos  -> no carga fontawesome5 (las cajas quedan sin ícono).
+%%%
+%%%  Uso:  \usepackage{uaiestilo}      (Overleaf: dejar el .sty junto al .tex)
+%%%=============================================================================
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{uaiestilo}[2026/07/23 v1.0 Identidad visual UAI - clases y apuntes]
+
+%%-----------------------------------------------------------------------------
+%% 0. OPCIONES Y DETECCIÓN DE CLASE
+%%-----------------------------------------------------------------------------
+\newif\ifuai@fira      \uai@firatrue
+\newif\ifuai@iconos    \uai@iconostrue
+\DeclareOption{sinfira}{\uai@firafalse}
+\DeclareOption{siniconos}{\uai@iconosfalse}
+\ProcessOptions\relax
+
+\newif\ifuai@beamer \uai@beamerfalse
+\@ifclassloaded{beamer}{\uai@beamertrue}{}
+
+%%-----------------------------------------------------------------------------
+%% 1. CODIFICACIÓN, IDIOMA Y TIPOGRAFÍA
+%%    Fira Sans: sans moderna, muy legible en pantalla y en papel.
+%%    newtxsf   : matemática sans que combina con Fira (NO cargar amssymb:
+%%                newtxsf ya provee los símbolos AMS).
+%%-----------------------------------------------------------------------------
+\RequirePackage[utf8]{inputenc}
+\RequirePackage[T1]{fontenc}
+\RequirePackage{amsmath}
+
+\ifuai@fira
+  \RequirePackage[sfdefault,scaled=1.02,lining]{FiraSans}
+  \RequirePackage[scaled=0.88]{FiraMono}
+  \RequirePackage{newtxsf}          % matemática sans
+\else
+  \RequirePackage{lmodern}
+  \RequirePackage{amssymb}
+  \renewcommand*\familydefault{\sfdefault}
+\fi
+
+\RequirePackage{mathtools}
+% es-tabla       -> "Tabla" en vez de "Cuadro"
+% es-nodecimaldot-> conserva el punto decimal en modo matemático
+% es-noshorthands-> evita que "  <  >  interfieran con TikZ/pgfplots/siunitx
+\RequirePackage[spanish,es-tabla,es-nodecimaldot,es-noshorthands]{babel}
+\RequirePackage{microtype}
+
+%%-----------------------------------------------------------------------------
+%% 2. PALETA INSTITUCIONAL
+%%    Azul UAI como acento; el peso visual lo lleva el azul petróleo (tinta),
+%%    más sobrio y con mejor contraste sobre blanco.
+%%-----------------------------------------------------------------------------
+\RequirePackage{xcolor}
+\definecolor{uaiAzul}   {HTML}{00AFD8}   % institucional (acento)
+\definecolor{uaiTinta}  {HTML}{12384A}   % azul petróleo: títulos y texto fuerte
+\definecolor{uaiGrafito}{HTML}{23272B}   % cuerpo de texto
+\definecolor{uaiAcero}  {HTML}{5A6E78}   % texto secundario / pies
+\definecolor{uaiVerde}  {HTML}{1F8A70}   % ideas clave, resultados
+\definecolor{uaiNaranja}{HTML}{D98218}   % recetas, estrategias
+\definecolor{uaiRojo}   {HTML}{C0392B}   % alertas, errores comunes
+\definecolor{uaiVioleta}{HTML}{6B5B95}   % ejemplos
+\definecolor{uaiNiebla} {HTML}{F4F7F9}   % fondos suaves
+\definecolor{uaiBorde}  {HTML}{DCE4E9}   % filetes y separadores
+
+%%-----------------------------------------------------------------------------
+%% 3. ÍCONOS (opcionales)
+%%-----------------------------------------------------------------------------
+\ifuai@iconos
+  \RequirePackage{fontawesome5}
+  %% Los nombres de íconos cambian entre versiones de fontawesome5 (p. ej.
+  %% \faPencilAlt no existe en todas). Si un nombre no está definido, el ícono
+  %% simplemente se omite en lugar de detener la compilación.
+  \DeclareRobustCommand{\uaiIcono}[1]{\ifdefined#1#1\,\fi}
+\else
+  \DeclareRobustCommand{\uaiIcono}[1]{}   % descarta el ícono sin ejecutarlo
+\fi
+
+%%-----------------------------------------------------------------------------
+%% 4. FÁBRICA DE CAJAS
+%%    Estilo: fondo muy tenue, filete lateral de color, esquinas redondeadas,
+%%    título en línea (sin barra de color) para no recargar la página.
+%%
+%%    \uaiNuevaCaja   {entorno}{color}{ícono}{Etiqueta}  -> sin numerar
+%%    \uaiNuevaCajaNum{entorno}{color}{ícono}{Etiqueta}  -> numerada en apuntes,
+%%                                                          sin numerar en clases
+%%    Todos los entornos aceptan un argumento opcional (subtítulo):
+%%        \begin{definicion}[Flujo eléctrico] ... \end{definicion}
+%%-----------------------------------------------------------------------------
+\RequirePackage[most]{tcolorbox}
+
+\tcbset{
+  uaibase/.style={
+    enhanced, breakable,
+    arc=2.2mm, outer arc=2.2mm,
+    boxrule=0pt, leftrule=2.4pt,
+    left=8pt, right=8pt, top=5pt, bottom=5pt,
+    fonttitle=\bfseries,
+    toptitle=1pt, bottomtitle=1pt,
+    before skip=6pt, after skip=6pt
+  }
+}
+
+\newcommand{\uaiNuevaCaja}[4]{%
+  \newtcolorbox{#1}[1][]{%
+    uaibase,
+    colback=#2!4!white, colframe=#2, colbacktitle=#2!4!white,
+    coltitle=#2!70!black,
+    title={\uaiIcono{#3}#4\ifx\relax##1\relax\else{\ \textmd{---~##1}}\fi}}}
+
+\newcommand{\uaiNuevaCajaNum}[4]{%
+  \ifuai@beamer
+    \uaiNuevaCaja{#1}{#2}{#3}{#4}%
+  \else
+    \newtcolorbox[auto counter,number within=section]{#1}[1][]{%
+      uaibase,
+      colback=#2!4!white, colframe=#2, colbacktitle=#2!4!white,
+      coltitle=#2!70!black,
+      title={\uaiIcono{#3}#4~\thetcbcounter\ifx\relax##1\relax\else{\ \textmd{(##1)}}\fi}}%
+  \fi}
+
+%% --- Entornos numerados (en apuntes) -----------------------------------------
+\uaiNuevaCajaNum{definicion} {uaiAzul}   {\faBook}          {Definición}
+\uaiNuevaCajaNum{teorema}    {uaiTinta}  {\faSuperscript}   {Teorema}
+\uaiNuevaCajaNum{proposicion}{uaiTinta}  {\faSuperscript}   {Proposición}
+\uaiNuevaCajaNum{ejemplo}    {uaiVioleta}{\faEdit}          {Ejemplo}
+\uaiNuevaCajaNum{ejercicio}  {uaiVioleta}{\faPen}           {Ejercicio}
+
+%% --- Entornos sin numerar ----------------------------------------------------
+\uaiNuevaCaja{idea}      {uaiVerde}  {\faLightbulb}          {Idea clave}
+\uaiNuevaCaja{resultado} {uaiVerde}  {\faCheckCircle}        {Resultado}
+\uaiNuevaCaja{receta}    {uaiNaranja}{\faCogs}               {Receta}
+\uaiNuevaCaja{estrategia}{uaiNaranja}{\faCogs}               {Estrategia}
+\uaiNuevaCaja{ojo}       {uaiRojo}   {\faExclamationTriangle}{Ojo con esto}
+\uaiNuevaCaja{errcomun}  {uaiRojo}   {\faExclamationTriangle}{Error común}
+\uaiNuevaCaja{alerta}    {uaiRojo}   {\faBolt}               {Alerta}
+\uaiNuevaCaja{obs}       {uaiAcero}  {\faInfoCircle}         {Observación}
+\uaiNuevaCaja{resumen}   {uaiTinta}  {\faListUl}             {Resumen}
+
+%%-----------------------------------------------------------------------------
+%% 5. TABLAS, FIGURAS Y UNIDADES
+%%-----------------------------------------------------------------------------
+\RequirePackage{booktabs}
+\RequirePackage{array}
+\RequirePackage{graphicx}
+\RequirePackage{siunitx}
+\sisetup{
+  per-mode          = symbol,
+  separate-uncertainty = true,
+  range-units       = single,
+  detect-all
+  % output-decimal-marker = {,}   % <- descomentar si prefieres coma decimal
+}
+% Filas de tabla un poco más aireadas (booktabs se ve mejor así)
+\renewcommand{\arraystretch}{1.15}
+
+%%-----------------------------------------------------------------------------
+%% 6. GRÁFICOS: TikZ / pgfplots / circuitikz
+%%-----------------------------------------------------------------------------
+\RequirePackage{tikz}
+\usetikzlibrary{arrows.meta,calc,positioning,decorations.markings,
+                decorations.pathmorphing,patterns,shapes.geometric,fit}
+\RequirePackage{pgfplots}
+\pgfplotsset{compat=1.18}
+% Estilo común de gráficos: sobrio, sin marco cerrado, grilla tenue
+\pgfplotsset{
+  uaiplot/.style={
+    axis lines=left,
+    axis line style={uaiAcero, thin},
+    tick label style={font=\footnotesize, color=uaiGrafito},
+    label style={font=\small, color=uaiTinta},
+    title style={font=\small\bfseries, color=uaiTinta},
+    grid=major, grid style={uaiBorde, very thin},
+    legend style={draw=uaiBorde, fill=white, font=\footnotesize, rounded corners=2pt},
+    every axis plot/.append style={very thick}
+  }
+}
+\RequirePackage{circuitikz}
+\ctikzset{bipoles/thickness=1, font=\footnotesize}
+
+%%-----------------------------------------------------------------------------
+%% 7. CÓDIGO FUENTE (listings; no requiere shell-escape, sirve en Overleaf)
+%%    En Beamer, los frames con código deben declararse [fragile].
+%%-----------------------------------------------------------------------------
+\RequirePackage{listings}
+\lstdefinestyle{uai}{
+  basicstyle      = \ttfamily\footnotesize\color{uaiGrafito},
+  keywordstyle    = \bfseries\color{uaiTinta},
+  commentstyle    = \itshape\color{uaiAcero},
+  stringstyle     = \color{uaiVerde!80!black},
+  numberstyle     = \tiny\color{uaiAcero},
+  numbers         = left, numbersep=8pt,
+  backgroundcolor = \color{uaiNiebla},
+  frame           = leftline, framerule=2pt, rulecolor=\color{uaiAzul},
+  framexleftmargin= 6pt, framexrightmargin=4pt, xleftmargin=8pt,
+  breaklines      = true, breakatwhitespace=true,
+  showstringspaces= false,
+  tabsize         = 2,
+  aboveskip       = 8pt, belowskip=8pt,
+  captionpos      = b,
+  % acentos y eñes dentro del código
+  extendedchars   = true,
+  literate        = {á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1
+                    {Á}{{\'A}}1 {É}{{\'E}}1 {Í}{{\'I}}1 {Ó}{{\'O}}1 {Ú}{{\'U}}1
+                    {ñ}{{\~n}}1 {Ñ}{{\~N}}1 {¿}{{?`}}1 {¡}{{!`}}1
+}
+\lstset{style=uai}
+
+%%-----------------------------------------------------------------------------
+%% 8. LOGOS INSTITUCIONALES
+%%    \uailogo[altura]{archivo}  -> inserta el logo; si el archivo no existe
+%%                                  dibuja un marcador y el documento IGUAL compila.
+%%    \uailogos{...}             -> define la fila de logos de la portada.
+%%-----------------------------------------------------------------------------
+\newcommand{\uai@marcador}[2]{%
+  \begin{tikzpicture}[baseline=0pt]
+    \node[draw=uaiBorde, fill=uaiNiebla, rounded corners=1.5pt,
+          minimum height=#1, inner xsep=6pt, align=center,
+          font=\tiny\color{uaiAcero}] {logo: \detokenize{#2}};
+  \end{tikzpicture}}
+\newcommand{\uailogo}[2][1.1cm]{%
+  \IfFileExists{#2}{\includegraphics[height=#1]{#2}}{\uai@marcador{#1}{#2}}}
+
+\newcommand{\uai@logos}{}
+\newcommand{\uailogos}[1]{\renewcommand{\uai@logos}{#1}}
+
+%%-----------------------------------------------------------------------------
+%% 9. MACROS DE FÍSICA (amplíalas según el curso)
+%%-----------------------------------------------------------------------------
+\newcommand{\vect}[1]{\boldsymbol{#1}}          % vector en negrita
+\newcommand{\uvec}[1]{\hat{\boldsymbol{#1}}}    % versor
+\providecommand{\dd}{}
+\renewcommand{\dd}{\mathrm{d}}                  % diferencial recto
+\newcommand{\ddfrac}[2]{\frac{\dd #1}{\dd #2}}
+\newcommand{\pd}[2]{\frac{\partial #1}{\partial #2}}
+\newcommand{\abs}[1]{\left\lvert #1 \right\rvert}
+\newcommand{\norm}[1]{\left\lVert #1 \right\rVert}
+\newcommand{\prom}[1]{\left\langle #1 \right\rangle}
+
+%%=============================================================================
+%% 10. RAMA BEAMER  ---  presentaciones de clase
+%%=============================================================================
+\ifuai@beamer
+
+  %% Metropolis avisa que sus fuentes Fira requieren XeLaTeX/LuaLaTeX. Como la
+  %% tipografía la fija este mismo paquete, el aviso es irrelevante: se filtra.
+  \RequirePackage{silence}
+  \WarningFilter{beamerthememetropolis}{You need to compile}
+
+  %% Tamaño por defecto de los gráficos pgfplots en diapositiva
+  \pgfplotsset{uaiplot/.append style={width=0.74\linewidth, height=0.40\linewidth}}
+
+  \usetheme[progressbar=frametitle, block=fill, sectionpage=progressbar,
+            subsectionpage=progressbar, numbering=none]{metropolis}
+
+  %% --- Colores del tema ------------------------------------------------------
+  \setbeamercolor{normal text}     {fg=uaiGrafito, bg=white}
+  \setbeamercolor{structure}       {fg=uaiTinta}
+  \setbeamercolor{frametitle}      {fg=uaiTinta,  bg=white}
+  \setbeamercolor{title}           {fg=uaiTinta}
+  \setbeamercolor{subtitle}        {fg=uaiAcero}
+  \setbeamercolor{author}          {fg=uaiGrafito}
+  \setbeamercolor{institute}       {fg=uaiAcero}
+  \setbeamercolor{date}            {fg=uaiAcero}
+  \setbeamercolor{section in toc}  {fg=uaiTinta}
+  \setbeamercolor{subsection in toc}{fg=uaiAcero}
+  \setbeamercolor{progress bar}    {fg=uaiAzul,   bg=uaiBorde}
+  \setbeamercolor{title separator} {fg=uaiAzul}
+  \setbeamercolor{alerted text}    {fg=uaiRojo}
+  \setbeamercolor{example text}    {fg=uaiVerde}
+  \setbeamercolor{block title}     {bg=uaiNiebla, fg=uaiTinta}
+  \setbeamercolor{block body}      {bg=uaiNiebla!60!white, fg=uaiGrafito}
+  \setbeamercolor{block title alerted}{bg=uaiRojo!10, fg=uaiRojo!80!black}
+  \setbeamercolor{block body alerted} {bg=uaiRojo!4,  fg=uaiGrafito}
+  \setbeamercolor{block title example}{bg=uaiVerde!12,fg=uaiVerde!70!black}
+  \setbeamercolor{block body example} {bg=uaiVerde!4, fg=uaiGrafito}
+  \setbeamercolor{palette primary}    {bg=uaiTinta,   fg=white}  % frames [standout]
+  \setbeamercolor{footline}           {fg=uaiAcero,   bg=white}
+  \setbeamercolor{itemize item}       {fg=uaiAzul}
+  \setbeamercolor{itemize subitem}    {fg=uaiAcero}
+  \setbeamercolor{enumerate item}     {fg=uaiAzul}
+  \setbeamercolor{caption name}       {fg=uaiTinta}
+
+  %% --- Jerarquía tipográfica -------------------------------------------------
+  \setbeamerfont{title}        {size=\LARGE, series=\bfseries}
+  \setbeamerfont{subtitle}     {size=\normalsize, series=\mdseries}
+  \setbeamerfont{frametitle}   {size=\large, series=\bfseries}
+  \setbeamerfont{footline}     {size=\tiny}
+  \setbeamerfont{caption}      {size=\scriptsize}
+  \setbeamerfont{block title}  {size=\normalsize, series=\bfseries}
+  \setbeamerfont{section in toc}{series=\bfseries}
+
+  %% --- Viñetas discretas -----------------------------------------------------
+  \setbeamertemplate{itemize item}{\raisebox{0.18ex}{\scriptsize$\blacksquare$}}
+  \setbeamertemplate{itemize subitem}{\raisebox{0.15ex}{\tiny$\blacktriangleright$}}
+  \setbeamertemplate{itemize subsubitem}{\textendash}
+
+  %% --- Portada ---------------------------------------------------------------
+  %% Título grande, filete de acento, datos secundarios y fila de logos abajo.
+  \setbeamertemplate{title page}{%
+    \begin{minipage}[b][\paperheight][c]{\textwidth}
+      \raggedright
+      {\usebeamerfont{title}\usebeamercolor[fg]{title}\inserttitle\par}
+      \vspace{2.5mm}
+      {\color{uaiAzul}\rule{0.30\textwidth}{1.6pt}}\par
+      \vspace{3mm}
+      {\usebeamerfont{subtitle}\usebeamercolor[fg]{subtitle}\insertsubtitle\par}
+      \vspace{9mm}
+      {\usebeamerfont{author}\usebeamercolor[fg]{author}\insertauthor\par}
+      \vspace{1mm}
+      {\usebeamerfont{institute}\usebeamercolor[fg]{institute}\insertinstitute\par}
+      \vspace{2mm}
+      {\usebeamerfont{date}\usebeamercolor[fg]{date}\insertdate\par}
+      \vfill
+      \hfill\uai@logos\par
+      \vspace{2mm}
+    \end{minipage}}
+
+  %% --- Pie de página ---------------------------------------------------------
+  %% Institución | título corto | n / N.  Para volver al pie mínimo de
+  %% metropolis, comenta este bloque y usa \metroset{numbering=fraction}.
+  \setbeamertemplate{footline}{%
+    \leavevmode%
+    \hbox{%
+      \begin{beamercolorbox}[wd=\paperwidth, ht=3ex, dp=1.6ex,
+                             leftskip=1.5em, rightskip=1.5em]{footline}%
+        \usebeamerfont{footline}%
+        \insertshortinstitute\hfill\insertshorttitle\hfill
+        \insertframenumber\,/\,\inserttotalframenumber%
+      \end{beamercolorbox}}}
+
+  %% --- Figuras y márgenes ----------------------------------------------------
+  \setbeamertemplate{caption}[numbered]
+  \setbeamertemplate{caption label separator}{. }
+  \setbeamersize{text margin left=1.4em, text margin right=1.4em}
+
+  %% --- Enlaces ---------------------------------------------------------------
+  \hypersetup{colorlinks=true, linkcolor=uaiTinta, urlcolor=uaiAzul!75!black,
+              citecolor=uaiVerde!70!black}
+
+%%=============================================================================
+%% 11. RAMA ARTICLE  ---  apuntes
+%%=============================================================================
+\else
+
+  %% Tamaño por defecto de los gráficos pgfplots en apuntes
+  \pgfplotsset{uaiplot/.append style={width=0.80\linewidth, height=0.48\linewidth}}
+
+  \RequirePackage[a4paper,top=2.7cm,bottom=2.5cm,left=2.6cm,right=2.6cm,
+                  headsep=14pt,footskip=1.1cm]{geometry}
+  \RequirePackage{enumitem}
+  \setlist[itemize]{itemsep=2pt, topsep=4pt, parsep=0pt, leftmargin=1.5em}
+  \setlist[enumerate]{itemsep=2pt, topsep=4pt, parsep=0pt, leftmargin=1.7em}
+  \RequirePackage{fancyhdr}
+  \RequirePackage{titlesec}
+  \RequirePackage{caption}
+  \RequirePackage{subcaption}
+
+  \color{uaiGrafito}
+  \setlength{\parskip}{0.55em}
+  \setlength{\parindent}{0pt}          % párrafos separados, sin sangría
+  \linespread{1.06}                    % un poco de aire entre líneas
+
+  %% --- Títulos de sección ----------------------------------------------------
+  \titleformat{\section}[hang]
+    {\normalfont\Large\bfseries\color{uaiTinta}}{\thesection}{0.7em}{}
+    [{\vspace{2pt}\color{uaiAzul}\titlerule[1.2pt]}]
+  \titleformat{\subsection}[hang]
+    {\normalfont\large\bfseries\color{uaiTinta!85!white}}{\thesubsection}{0.6em}{}
+  \titleformat{\subsubsection}[hang]
+    {\normalfont\normalsize\bfseries\color{uaiAcero}}{\thesubsubsection}{0.6em}{}
+  \titlespacing*{\section}      {0pt}{2.2ex plus 1ex minus .2ex}{1.2ex}
+  \titlespacing*{\subsection}   {0pt}{1.8ex plus 1ex minus .2ex}{0.8ex}
+  \titlespacing*{\subsubsection}{0pt}{1.4ex plus 1ex minus .2ex}{0.6ex}
+
+  %% --- Encabezado y pie ------------------------------------------------------
+  \pagestyle{fancy}
+  \fancyhf{}
+  \renewcommand{\headrulewidth}{0.4pt}
+  \renewcommand{\footrulewidth}{0pt}
+  \fancyhead[L]{\footnotesize\color{uaiAcero}\uai@cursocorto}
+  \fancyhead[R]{\footnotesize\color{uaiAcero}\nouppercase{\leftmark}}
+  \fancyfoot[C]{\footnotesize\color{uaiAcero}\thepage}
+  \fancypagestyle{plain}{\fancyhf{}\renewcommand{\headrulewidth}{0pt}%
+    \fancyfoot[C]{\footnotesize\color{uaiAcero}\thepage}}
+  \renewcommand{\sectionmark}[1]{\markboth{\thesection.\ #1}{}}
+
+  %% --- Epígrafes de figuras y tablas -----------------------------------------
+  \captionsetup{font=small, labelfont={bf,color=uaiTinta}, labelsep=period,
+                width=0.9\linewidth}
+
+  %% --- Metadatos y portada ---------------------------------------------------
+  \newcommand{\uai@subtitulo}{}
+  \newcommand{\subtitle}[1]{\renewcommand{\uai@subtitulo}{#1}}
+  \newcommand{\uai@cursocorto}{}
+  \newcommand{\cursocorto}[1]{\renewcommand{\uai@cursocorto}{#1}}
+  \newcommand{\uai@curso}{}
+  \newcommand{\curso}[1]{\renewcommand{\uai@curso}{#1}}
+
+  %% \uaiportada  --> encabezado de portada (no ocupa una página completa)
+  \renewcommand{\maketitle}{%
+    \thispagestyle{plain}
+    \noindent\uai@logos\par
+    \vspace{6mm}
+    {\color{uaiAzul}\rule{\linewidth}{1.6pt}}\par
+    \vspace{2mm}
+    {\footnotesize\color{uaiAcero}\MakeUppercase{\uai@curso}\par}
+    \vspace{3mm}
+    {\LARGE\bfseries\color{uaiTinta}\@title\par}
+    \vspace{2mm}
+    {\large\color{uaiAcero}\uai@subtitulo\par}
+    \vspace{5mm}
+    {\normalsize\color{uaiGrafito}\@author\hfill\@date\par}
+    \vspace{1mm}
+    {\color{uaiBorde}\rule{\linewidth}{0.8pt}}\par
+    \vspace{6mm}}
+
+  %% --- Índice ----------------------------------------------------------------
+  \RequirePackage{tocloft}
+  \renewcommand{\cfttoctitlefont}{\Large\bfseries\color{uaiTinta}}
+  \renewcommand{\cftsecfont}{\bfseries\color{uaiTinta}}
+  \renewcommand{\cftsecpagefont}{\bfseries\color{uaiTinta}}
+  \renewcommand{\cftsubsecfont}{\color{uaiGrafito}}
+  \setlength{\cftbeforesecskip}{4pt}
+
+  %% --- Enlaces (hyperref siempre al final) -----------------------------------
+  \RequirePackage[colorlinks=true, linkcolor=uaiTinta, urlcolor=uaiAzul!75!black,
+                  citecolor=uaiVerde!70!black, breaklinks=true]{hyperref}
+
+\fi
+\endinput

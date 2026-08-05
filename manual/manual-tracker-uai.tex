@@ -1,0 +1,327 @@
+%%%=============================================================================
+%%%  MANUAL DE USO --- Tracker UAI
+%%%  Analisis de video y graficos para laboratorios de fisica
+%%%  Universidad Adolfo Ibanez / FACH --- Prof. David Aguayo Vera
+%%%
+%%%  Requiere  uaiestilo.sty  en la misma carpeta.
+%%%  Compilar con pdfLaTeX (dos pasadas para indice y referencias).
+%%%=============================================================================
+\documentclass[11pt,a4paper]{article}
+
+%%-----------------------------------------------------------------------------
+%% 1. ESTILO INSTITUCIONAL
+%%-----------------------------------------------------------------------------
+\usepackage{uaiestilo}
+
+%%-----------------------------------------------------------------------------
+%% 2. METADATOS
+%%-----------------------------------------------------------------------------
+\curso{Universidad Adolfo Ibáñez --- Facultad de Ingeniería y Ciencias}
+\cursocorto{Tracker UAI --- Manual de uso}
+\title{Tracker UAI}
+\subtitle{Manual de uso: análisis de video y gráficos para laboratorios de física}
+\author{Prof.\ David Aguayo Vera}
+\date{Segundo semestre de 2026}
+
+\uailogos{%
+  \uailogo[1.1cm]{logo-uai.png}\hfill%
+  \uailogo[1.1cm]{logo-fach.png}}
+
+%%=============================================================================
+\begin{document}
+%%=============================================================================
+
+\maketitle
+
+\begin{obs}[Cómo usar este manual]
+  Este documento explica cómo instalar y usar \textbf{Tracker UAI} en Windows,
+  macOS y Linux. Las cajas de color señalan procedimientos paso a paso
+  (\textcolor{uaiNaranja}{recetas}), advertencias (\textcolor{uaiRojo}{ojo} y
+  errores comunes) e ideas clave. No se requieren conocimientos de programación.
+\end{obs}
+
+\tableofcontents
+\vspace{4mm}
+
+%%=============================================================================
+\section{¿Qué es Tracker UAI?}
+%%=============================================================================
+
+Tracker UAI es una aplicación para analizar los videos que los estudiantes graban
+en el laboratorio y para construir gráficos de datos experimentales. Permite medir
+la posición de un objeto cuadro a cuadro, obtener su velocidad y aceleración,
+ajustar modelos físicos y exportar tablas y figuras listas para el informe.
+
+\begin{idea}
+  Todo el análisis ocurre en tu computador y en tu navegador. No necesitas cuenta,
+  ni internet (salvo la primera instalación), ni instalar Excel, Python o MATLAB
+  para usarlo.
+\end{idea}
+
+El trabajo se organiza en seis etapas secuenciales para el análisis de video, más
+una pestaña independiente de gráficos:
+
+\begin{figure}[htbp]
+  \centering
+  \begin{tikzpicture}[>=Stealth, node distance=3.5mm,
+      paso/.style={draw=uaiBorde, fill=uaiNiebla, rounded corners=2pt,
+                   font=\footnotesize\bfseries, text=uaiTinta,
+                   minimum height=8mm, inner xsep=5pt}]
+    \node[paso] (v)  {1.\,Video};
+    \node[paso, right=of v] (c) {2.\,Calibración};
+    \node[paso, right=of c] (t) {3.\,Tracking};
+    \node[paso, right=of t] (k) {4.\,Cinemática};
+    \node[paso, below=6mm of c] (a) {5.\,Ajuste};
+    \node[paso, right=of a] (e) {6.\,Exportar};
+    \node[paso, fill=uaiVerde!10!white, right=8mm of e] (g) {\faChartLine\ Gráficos};
+    \draw[uaiAzul, ->, thick] (v) -- (c);
+    \draw[uaiAzul, ->, thick] (c) -- (t);
+    \draw[uaiAzul, ->, thick] (t) -- (k);
+    \draw[uaiAzul, ->, thick] (k.south) |- (a.north);
+    \draw[uaiAzul, ->, thick] (a) -- (e);
+  \end{tikzpicture}
+  \caption{Flujo de trabajo. La pestaña \emph{Gráficos} es independiente y no
+           requiere video.}
+  \label{fig:flujo}
+\end{figure}
+
+%%=============================================================================
+\section{Requisitos e instalación}
+%%=============================================================================
+
+Lo único que debes instalar tú es \textbf{Python 3.11 o superior}. El resto de las
+librerías las instala la aplicación automáticamente la primera vez que la abres.
+
+\subsection{Instalar Python (una sola vez)}
+
+\begin{receta}[Según tu sistema operativo]
+  \begin{itemize}
+    \item \textbf{Windows:} descarga Python desde
+      \texttt{python.org/downloads} y, en el instalador, marca la casilla
+      \textbf{«Add Python to PATH»}. (Alternativa: instalar «Python 3.12» desde la
+      Microsoft Store.)
+    \item \textbf{macOS:} instala desde \texttt{python.org/downloads} o, con
+      Homebrew, ejecuta \texttt{brew install python}.
+    \item \textbf{Linux (Ubuntu/Debian):} instala los paquetes base de Python.
+  \end{itemize}
+\end{receta}
+
+\begin{lstlisting}[caption={Linux: instalación de Python (terminal).}]
+sudo apt update
+sudo apt install python3 python3-venv python3-pip
+\end{lstlisting}
+
+Para comprobar la instalación, abre una terminal y ejecuta \texttt{python -{}-version}
+(en Windows) o \texttt{python3 -{}-version} (en macOS/Linux); debe mostrar
+\texttt{Python 3.11} o superior.
+
+\begin{errcomun}
+  En Windows, olvidar marcar \textbf{«Add Python to PATH»} hace que el programa no
+  encuentre Python y no abra. Si te ocurre, reinstala Python marcando esa casilla.
+\end{errcomun}
+
+%%=============================================================================
+\section{Iniciar el programa}
+%%=============================================================================
+
+\begin{receta}[Abrir Tracker UAI]
+  \begin{itemize}
+    \item \textbf{Windows:} doble clic en \texttt{Iniciar\_Tracker\_UAI.bat}.
+    \item \textbf{macOS / Linux:} abre una terminal en la carpeta del programa y
+      ejecuta el lanzador (ver abajo).
+    \item \textbf{Cualquier sistema (manual):} instala las dependencias y arranca
+      con \texttt{streamlit} (ver abajo).
+  \end{itemize}
+\end{receta}
+
+\begin{lstlisting}[caption={macOS / Linux: lanzador.}]
+bash iniciar_tracker.sh
+\end{lstlisting}
+
+\begin{lstlisting}[caption={Método manual, cualquier sistema.}]
+pip install -r requirements.txt
+python -m streamlit run app.py
+\end{lstlisting}
+
+La aplicación se abre sola en tu navegador (normalmente en
+\texttt{http://localhost:8501}).
+
+\begin{obs}
+  La \textbf{primera vez} tarda algunos minutos porque descarga e instala las
+  librerías; la ventana de la terminal queda abierta mostrando el avance. Las
+  siguientes veces abre en segundos. Para cerrar el programa, cierra esa ventana
+  (o presiona \texttt{Ctrl+C} en ella).
+\end{obs}
+
+%%=============================================================================
+\section{Análisis de video, etapa por etapa}
+%%=============================================================================
+
+La barra lateral izquierda contiene el selector de etapas y la carga del video.
+
+\subsection{Etapa 1 — Video}
+
+Sube tu video (mp4, mov, avi, mkv, m4v o webm). Usa el reproductor y los controles
+cuadro a cuadro para ubicar el tramo de interés y define el \textbf{intervalo de
+procesamiento} (cuadro inicial y final).
+
+\begin{idea}
+  Acotar el intervalo hace que todo el análisis sea mucho más rápido: el programa
+  trabaja solo sobre el tramo que te interesa, no sobre el video completo.
+\end{idea}
+
+\subsection{Etapa 2 — Calibración}
+
+Convierte píxeles a metros. Marca dos puntos de una distancia conocida (por
+ejemplo, una regla) y escribe esa distancia en metros; luego marca el origen de
+coordenadas.
+
+\begin{receta}[Calibrar]
+  \begin{enumerate}
+    \item Marca el punto 1 y el punto 2 sobre la distancia conocida.
+    \item Escribe la distancia real entre ambos, en metros.
+    \item Marca el origen de coordenadas.
+    \item (Opcional) Activa \emph{«Ejes con orientación libre»} si el eje $x$ no es
+      horizontal (por ejemplo, un plano inclinado) y marca la dirección $+x$.
+    \item Pulsa \textbf{Aplicar calibración}.
+  \end{enumerate}
+\end{receta}
+
+\subsection{Etapa 3 — Tracking (seguimiento del objeto)}
+
+Hay dos modos. En el \textbf{manual}, haces clic sobre el objeto en cada cuadro y
+el video avanza solo. En el \textbf{automático}, eliges \emph{Plantilla} (arrastras
+un recuadro sobre el objeto), \emph{Color} (haces clic para tomar su color) o
+\emph{CSRT}; verás la detección en vivo y, al terminar, todas las detecciones
+superpuestas.
+
+\begin{ojo}
+  Tras la detección automática puedes \textbf{corregir}: navega cuadro por cuadro y
+  haz clic para mover un punto mal detectado, o bórralo. También puedes editar la
+  tabla de datos directamente.
+\end{ojo}
+
+\subsection{Etapa 4 — Cinemática}
+
+Muestra los gráficos de posición, velocidad, aceleración y trayectoria. Activa el
+\textbf{suavizado} si los datos tienen ruido, sobre todo para la aceleración.
+
+\subsection{Etapa 5 — Ajuste de modelos}
+
+Elige un \textbf{preset} según tu laboratorio (gravedad en plano inclinado,
+velocidad terminal, colisiones, péndulo cónico, péndulo bifilar, MHD) o el modo
+\textbf{genérico}. El programa entrega los parámetros con su \textbf{incertidumbre}
+y el coeficiente de determinación $R^{2}$.
+
+\subsection{Etapa 6 — Exportar}
+
+Marca con casillas qué gráficos quieres y descarga un archivo comprimido (ZIP) con
+las imágenes (PNG) y el archivo CSV con todos los datos crudos y derivados.
+
+%%=============================================================================
+\section{Pestaña «Gráficos» (datos manuales)}
+%%=============================================================================
+
+Esta herramienta es \textbf{independiente del video}: sirve para graficar datos
+escritos a mano. Está pensada para Física I; por ejemplo, graficar la aceleración
+en función de $\sin(\theta)$ en el péndulo simple.
+
+\begin{receta}[Construir un gráfico en pocos pasos]
+  \begin{enumerate}
+    \item Escribe el título y los nombres de los ejes.
+    \item Ingresa tus valores de $x$ e $y$ en la tabla (agrega filas con el botón
+      \texttt{+}).
+    \item El gráfico de dispersión aparece automáticamente.
+    \item Elige el ajuste (lineal o cuadrático): verás la curva, la \textbf{ecuación}
+      y el $R^{2}$.
+    \item Crea más series (con nombre y color) para comparar conjuntos de datos.
+    \item Descarga el gráfico en \textbf{PNG} o \textbf{SVG} para tu informe.
+  \end{enumerate}
+\end{receta}
+
+\begin{ejemplo}[Péndulo simple: $a$ frente a $\sin\theta$]
+  Al graficar la aceleración medida contra $\sin\theta$ y aplicar un ajuste lineal,
+  la pendiente corresponde a la aceleración de gravedad $g$, y el $R^{2}$ indica
+  qué tan bien la recta describe los datos.
+\end{ejemplo}
+
+%%=============================================================================
+\section{Consejos para grabar los videos}
+%%=============================================================================
+
+\begin{estrategia}[Buenas prácticas de grabación]
+  \begin{itemize}
+    \item Cámara \textbf{perpendicular} al plano del movimiento y \textbf{fija}
+      (trípode o apoyada); esta versión no corrige perspectiva.
+    \item La regla de calibración debe estar \textbf{en el mismo plano} que el
+      movimiento.
+    \item Buena iluminación; objeto bien visible y, si usarás seguimiento por color,
+      de un \textbf{color distinto al fondo}.
+    \item Para movimientos rápidos, graba en \textbf{cámara lenta} e indica el fps
+      real de captura en \emph{Opciones avanzadas}.
+  \end{itemize}
+\end{estrategia}
+
+%%=============================================================================
+\section{Solución de problemas}
+%%=============================================================================
+
+\begin{table}[htbp]
+  \centering
+  \caption{Problemas frecuentes y su solución.}
+  \label{tab:problemas}
+  \begin{tabular}{@{}p{5.2cm} p{8.3cm}@{}}
+    \toprule
+    \textbf{Problema} & \textbf{Solución} \\
+    \midrule
+    «No se encontró Python» & Reinstala Python marcando \textbf{Add to PATH}
+      (Windows). \\
+    El video \texttt{.mov} no carga o se cuelga & Suele ser el códec HEVC.
+      Conviértelo a H.264 con \texttt{ffmpeg}. \\
+    El video es muy largo o lento & En la Etapa 1, elige un intervalo corto de
+      cuadros. \\
+    No aparece el método CSRT & Instalaste \texttt{opencv-python} en vez de
+      \texttt{opencv-contrib-python}. \\
+    Editar cuadro por cuadro va lento & Acota el intervalo; usa tracking automático
+      y corrige solo los puntos malos. \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{alerta}
+  Para convertir un video con problemas de códec a un formato compatible (H.264),
+  usa la herramienta \texttt{ffmpeg} desde la terminal:
+\end{alerta}
+
+\begin{lstlisting}[caption={Convertir un video a H.264.}]
+ffmpeg -i entrada.mov -c:v libx264 -pix_fmt yuv420p salida.mp4
+\end{lstlisting}
+
+%%=============================================================================
+\section{Compartir el programa}
+%%=============================================================================
+
+El único requisito en el equipo de destino es tener \textbf{Python 3.11+}
+instalado; el resto lo instala el lanzador automáticamente.
+
+\begin{receta}[Distribución]
+  \begin{itemize}
+    \item \textbf{Windows:} ejecuta \texttt{Crear\_paquete\_para\_compartir.bat}
+      para generar un ZIP limpio y envíalo. El estudiante sigue
+      \texttt{LEEME\_ESTUDIANTES.txt}.
+    \item \textbf{macOS / Linux:} comparte la carpeta (sin la subcarpeta del
+      entorno virtual) junto con \texttt{iniciar\_tracker.sh}.
+  \end{itemize}
+\end{receta}
+
+\begin{resumen}
+  \begin{itemize}
+    \item Tracker UAI funciona en Windows, macOS y Linux; solo requiere Python 3.11+.
+    \item El análisis de video sigue seis etapas: Video, Calibración, Tracking,
+      Cinemática, Ajuste y Exportar.
+    \item La pestaña \emph{Gráficos} permite analizar datos experimentales sin video.
+    \item Todos los resultados se exportan como CSV e imágenes para el informe.
+  \end{itemize}
+\end{resumen}
+
+\end{document}

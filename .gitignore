@@ -1,0 +1,43 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- Entornos virtuales ---
+.venv/
+venv/
+env/
+
+# --- Videos y salidas (no versionar datos de usuario) ---
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.m4v
+*.webm
+exports/
+TrackerUAI_compartir.zip
+
+# --- LaTeX (artefactos de compilación del manual) ---
+manual/*.aux
+manual/*.log
+manual/*.out
+manual/*.toc
+manual/*.synctex.gz
+
+# --- Streamlit secrets (nunca versionar) ---
+.streamlit/secrets.toml
+
+# --- Herramientas de agente / editor (no forman parte del proyecto) ---
+.claude/
+.agents/
+.vscode/
+.idea/
+
+# --- Sistema operativo ---
+.DS_Store
+Thumbs.db
+desktop.ini

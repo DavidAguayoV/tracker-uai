@@ -1,0 +1,21 @@
+# Normalización de fin de línea multiplataforma
+* text=auto
+
+# Scripts de shell SIEMPRE con LF (si no, se rompen en macOS/Linux)
+*.sh text eol=lf
+
+# Scripts .bat de Windows SIEMPRE con CRLF
+*.bat text eol=crlf
+
+# Código y texto: LF (funciona en los tres sistemas)
+*.py  text eol=lf
+*.md  text eol=lf
+*.txt text eol=lf
+*.toml text eol=lf
+*.tex text eol=lf
+*.sty text eol=lf
+
+# Binarios: sin conversión
+*.pdf binary
+*.png binary
+*.jpg binary

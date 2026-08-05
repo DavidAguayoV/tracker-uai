@@ -1,0 +1,46 @@
+# Configuración de Streamlit para Tracker UAI
+[server]
+# Permite subir videos grandes (MB). Por defecto Streamlit limita a 200 MB.
+maxUploadSize = 4096
+maxMessageSize = 4096
+
+# ---------------------------------------------------------------------------
+# Tema (identidad visual UAI: acento teal, tipografía Inter). Modo claro/oscuro.
+# ---------------------------------------------------------------------------
+[theme]
+font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+headingFont = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700&display=swap"
+codeFont = "'JetBrains Mono':https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap"
+baseFontSize = 15
+baseRadius = "medium"
+buttonRadius = "medium"
+showWidgetBorder = true
+showSidebarBorder = true
+linkUnderline = false
+chartCategoricalColors = ["#0E7490", "#0F766E", "#B45309", "#7C3AED", "#BE123C", "#1D4ED8", "#4D7C0F"]
+
+[theme.light]
+primaryColor = "#0E7490"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F4F6F9"
+textColor = "#1E293B"
+borderColor = "#E2E8F0"
+linkColor = "#0E7490"
+
+[theme.light.sidebar]
+backgroundColor = "#F4F6F9"
+secondaryBackgroundColor = "#E9EDF2"
+borderColor = "#E2E8F0"
+
+[theme.dark]
+primaryColor = "#22B8CF"
+backgroundColor = "#0F1419"
+secondaryBackgroundColor = "#1A2027"
+textColor = "#E6EDF3"
+borderColor = "#2A333D"
+linkColor = "#38BDF8"
+
+[theme.dark.sidebar]
+backgroundColor = "#12181F"
+secondaryBackgroundColor = "#1A2027"
+borderColor = "#2A333D"
