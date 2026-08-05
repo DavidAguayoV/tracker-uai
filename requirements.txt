@@ -1,16 +1,20 @@
 # Tracker UAI - dependencias
 # Instalar con:  pip install -r requirements.txt
 
-streamlit>=1.33
-streamlit-image-coordinates>=0.1.9
-# opencv-contrib-python incluye cv2 + los trackers CSRT/KCF (tracking automático
-# de mayor calidad). NO instalar además opencv-python: entran en conflicto.
-opencv-contrib-python>=4.9
+# IMPORTANTE: streamlit y streamlit-image-coordinates van FIJADOS a una
+# combinación compatible. El componente de clics (streamlit-image-coordinates)
+# importa un símbolo interno de Streamlit; con versiones más nuevas de Streamlit
+# ese símbolo cambió y da "ImportError: cannot import name 'UseColumnWith'".
+# No subas estas versiones sin verificar que el par siga siendo compatible.
+streamlit==1.60.0
+streamlit-image-coordinates==0.4.0
+
+opencv-contrib-python>=4.9   # incluye cv2 + trackers CSRT/KCF. NO instalar además opencv-python.
 numpy>=1.26
 scipy>=1.11
 plotly>=5.20
 pandas>=2.1
-matplotlib>=3.8        # solo para exportar figuras a PNG
+matplotlib>=3.8              # solo para exportar figuras a PNG/SVG
 
 # --- desarrollo / tests ---
 pytest>=8.0
