@@ -1,0 +1,579 @@
+%%%=============================================================================
+%%%  MANUAL DEL ESTUDIANTE --- Tracker UAI para el Laboratorio 1
+%%%  Instalación y uso paso a paso (primera vez)
+%%%  Universidad Adolfo Ibáñez / FACH --- Prof. David Aguayo Vera
+%%%
+%%%  Requiere  uaiestilo.sty  en la misma carpeta.
+%%%  Compilar con pdfLaTeX (dos pasadas para índice y referencias).
+%%%=============================================================================
+\documentclass[11pt,a4paper]{article}
+
+\usepackage{uaiestilo}
+
+%%-----------------------------------------------------------------------------
+%% Marcadores de acción (para distinguir qué hace el estudiante)
+%%-----------------------------------------------------------------------------
+\newcommand{\Accion}{\textcolor{uaiAzul}{\faHandPointRight\ \textbf{Acción:}}\ }
+\newcommand{\Ingresa}{\textcolor{uaiNaranja}{\faKeyboard\ \textbf{Ingresa:}}\ }
+\newcommand{\Verifica}{\textcolor{uaiVerde}{\faCheckCircle\ \textbf{Verifica:}}\ }
+\newcommand{\SiFalla}{\textcolor{uaiRojo}{\faExclamationTriangle\ \textbf{Si falla:}}\ }
+\newcommand{\Guarda}{\textcolor{uaiVioleta}{\faSave\ \textbf{Guarda:}}\ }
+
+%% Caja para indicar dónde conviene poner una captura de pantalla
+\newtcolorbox{captura}[1][]{%
+  enhanced, breakable, colback=uaiNiebla, colframe=uaiAcero,
+  boxrule=0.6pt, arc=1.2mm, left=8pt, right=8pt, top=6pt, bottom=6pt,
+  fonttitle=\bfseries\color{uaiTinta},
+  title={\faCamera\ Captura sugerida\ifx\relax#1\relax\else\ ---\ #1\fi}}
+
+%%-----------------------------------------------------------------------------
+%% Metadatos
+%%-----------------------------------------------------------------------------
+\curso{Universidad Adolfo Ibáñez --- Facultad de Ingeniería y Ciencias}
+\cursocorto{Tracker UAI --- Manual del estudiante (Lab 1)}
+\title{Manual del estudiante: Tracker UAI}
+\subtitle{Instalación y uso paso a paso para el Laboratorio 1}
+\author{Prof.\ David Aguayo Vera}
+\date{Segundo semestre de 2026}
+
+\uailogos{%
+  \uailogo[1.1cm]{logo-uai.png}\hfill%
+  \uailogo[1.1cm]{logo-fach.png}}
+
+%%=============================================================================
+\begin{document}
+%%=============================================================================
+
+\maketitle
+
+\begin{obs}[Cómo leer este manual]
+  Está pensado para usar el programa \textbf{por primera vez}. Sigue los pasos
+  en orden. A lo largo del texto verás marcadores de color que indican qué
+  hacer en cada momento:
+  \begin{itemize}
+    \item \Accion algo que debes hacer (un clic, arrastrar, navegar).
+    \item \Ingresa un dato que debes escribir.
+    \item \Verifica un resultado que debes comprobar en pantalla.
+    \item \SiFalla qué hacer si no sale lo esperado.
+    \item \Guarda un archivo que debes conservar para tu informe.
+  \end{itemize}
+  Las cajas grises con el ícono de cámara indican dónde conviene mirar (o pegar)
+  una captura de pantalla.
+\end{obs}
+
+\tableofcontents
+\vspace{4mm}
+
+%%=============================================================================
+\section{Introducción}
+%%=============================================================================
+
+\textbf{Tracker UAI} es un programa para \textbf{analizar videos de experimentos
+de física}. Se abre en tu navegador web y te guía por etapas para medir cómo se
+mueve un objeto en un video y obtener resultados numéricos.
+
+\subsection{¿Para qué se usa en el Laboratorio 1?}
+
+En el Laboratorio~1 grabarás un experimento con tu celular (por ejemplo, un carro
+que desliza por un plano inclinado) y usarás el programa para \textbf{seguir la
+posición del objeto cuadro a cuadro}. Con esos datos el programa calcula la
+velocidad y la aceleración, y ajusta un modelo físico para entregarte, por
+ejemplo, la \textbf{aceleración del carro} en cada lanzamiento.
+
+\subsection{¿Qué información permite obtener?}
+
+\begin{idea}
+  A partir del video, el programa entrega:
+  \begin{itemize}
+    \item La \textbf{posición} del objeto en el tiempo, en metros.
+    \item Su \textbf{velocidad} y \textbf{aceleración}.
+    \item Gráficos de posición, velocidad, aceleración y trayectoria.
+    \item El \textbf{ajuste de un modelo} (por ejemplo, la aceleración $a$) con su
+      \textbf{incertidumbre} y el coeficiente $R^2$.
+    \item Una tabla de datos y figuras que puedes \textbf{exportar} para tu informe.
+  \end{itemize}
+\end{idea}
+
+Además, el programa incluye una herramienta de \emph{Gráficos} para dibujar y
+ajustar datos escritos a mano (útil para el gráfico final del grupo, por ejemplo
+$a$ en función de $\sin\theta$), y una de \emph{Medición} para medir distancias y
+ángulos sobre una foto.
+
+%%=============================================================================
+\section{Requisitos previos}
+%%=============================================================================
+
+\subsection{Requisitos del computador}
+\begin{itemize}
+  \item Windows, macOS o Linux (cualquiera de los tres sirve).
+  \item Conexión a internet \textbf{solo la primera vez} (para instalar).
+  \item Un navegador web moderno (Chrome, Edge, Firefox o Safari).
+\end{itemize}
+
+\subsection{Programa que debes tener instalado}
+\begin{itemize}
+  \item \textbf{Python 3.11 o superior.} Es lo único que instalas tú; el resto lo
+    instala el programa solo.
+\end{itemize}
+
+\subsection{Archivos que debes descargar antes de comenzar}
+\begin{itemize}
+  \item La \textbf{carpeta del programa} (Tracker UAI), que te entregará el
+    profesor o descargarás desde el repositorio del curso.
+  \item Tu(s) \textbf{video(s)} del experimento, grabados con el celular.
+\end{itemize}
+
+%%=============================================================================
+\section{Instalación del programa}
+%%=============================================================================
+
+\subsection{Paso 1: instalar Python (una sola vez)}
+
+\begin{receta}[Instalar Python según tu sistema]
+  \begin{itemize}
+    \item \textbf{Windows:} entra a \texttt{python.org/downloads}, descarga
+      Python 3.11 o superior y, en el instalador, \textbf{marca la casilla
+      «Add Python to PATH»} antes de continuar.
+    \item \textbf{macOS:} descarga desde \texttt{python.org/downloads}, o con
+      Homebrew ejecuta \texttt{brew install python}.
+    \item \textbf{Linux:} instala \texttt{python3}, \texttt{python3-venv} y
+      \texttt{python3-pip} con el gestor de tu distribución.
+  \end{itemize}
+\end{receta}
+
+\begin{errcomun}
+  En Windows, \textbf{olvidar marcar «Add Python to PATH»} es el error más común:
+  después el programa no encuentra Python y no abre. Si te pasa, vuelve a instalar
+  Python marcando esa casilla.
+\end{errcomun}
+
+\subsection{Paso 2: ubicar la carpeta del programa}
+
+\Accion Descomprime la carpeta del programa (si vino en un \texttt{.zip}: clic
+derecho \textrightarrow{} \emph{Extraer todo}) en un lugar fácil de encontrar,
+por ejemplo el Escritorio o Descargas. Dentro verás archivos como
+\texttt{app.py}, \texttt{requirements.txt} y los lanzadores.
+
+\subsection{Paso 3: ejecutar el programa por primera vez}
+
+\begin{receta}[Abrir Tracker UAI]
+  \begin{itemize}
+    \item \textbf{Windows:} haz \textbf{doble clic} en
+      \texttt{Iniciar\_Tracker\_UAI.bat}.
+    \item \textbf{macOS / Linux:} abre una terminal en la carpeta y ejecuta
+      \texttt{bash iniciar\_tracker.sh}.
+  \end{itemize}
+\end{receta}
+
+\begin{captura}[Ventana negra (terminal) mostrando la instalación por primera vez]
+  La primera vez, la ventana de la terminal mostrará el avance de la instalación.
+\end{captura}
+
+\Verifica La \textbf{primera vez} tarda algunos minutos porque instala lo
+necesario; la ventana negra queda abierta mostrando el avance. Luego el programa
+se abre solo en tu navegador (dirección \texttt{http://localhost:8501}). Las
+veces siguientes abre en pocos segundos.
+
+\subsection{Si Windows muestra una advertencia de seguridad}
+
+\begin{alerta}
+  Si aparece una pantalla azul que dice \emph{«Windows protegió tu PC»}, es una
+  advertencia normal para archivos descargados. Haz clic en \textbf{«Más
+  información»} y luego en \textbf{«Ejecutar de todas formas»}.
+\end{alerta}
+
+\subsection{Método alternativo (por terminal)}
+
+Si prefieres no usar el lanzador, en una terminal dentro de la carpeta:
+\begin{lstlisting}[caption={Instalar y ejecutar manualmente.}]
+pip install -r requirements.txt
+python -m streamlit run app.py
+\end{lstlisting}
+
+\begin{errcomun}
+  Si al abrir sale un error que menciona \texttt{ImportError} o
+  \texttt{UseColumnWith}, tienes versiones incompatibles de las librerías.
+  Solución: ejecuta \texttt{pip install -r requirements.txt} de nuevo (el archivo
+  ya fija las versiones correctas).
+\end{errcomun}
+
+%%=============================================================================
+\section{Descripción general de la interfaz}
+%%=============================================================================
+
+Al abrir el programa verás dos zonas: la \textbf{barra lateral} (a la izquierda) y
+el \textbf{área principal} (al centro).
+
+\begin{captura}[Vista general con la barra lateral y el área principal]
+\end{captura}
+
+\subsection{Barra lateral (izquierda)}
+\begin{itemize}
+  \item \textbf{Sube tu video}: botón para cargar el archivo de video.
+  \item \textbf{Etapa}: lista para moverte entre las etapas del análisis
+    (1~Video, 2~Calibración, 3~Tracking, 4~Cinemática, 5~Ajuste, 6~Exportar),
+    más las herramientas \emph{Gráficos (datos manuales)} y \emph{Medición (foto)}.
+  \item \textbf{Opciones avanzadas}: aquí se activa el fps de captura manual
+    (para videos en cámara lenta).
+\end{itemize}
+
+\subsection{Área principal (centro)}
+Muestra la etapa seleccionada. Según la etapa, verás el video, controles de
+navegación, la imagen para hacer clic, tablas de datos y gráficos.
+
+\begin{idea}
+  El trabajo avanza \textbf{de arriba hacia abajo} y \textbf{de la Etapa 1 a la
+  6}. Cambiar de etapa \emph{no} borra tu trabajo: la calibración y los puntos
+  marcados se conservan.
+\end{idea}
+
+\subsection{Controles que verás a menudo}
+\begin{itemize}
+  \item Botones de navegación de frames: \texttt{-10}, \texttt{-5}, \texttt{-1},
+    \texttt{+1}, \texttt{+5}, \texttt{+10}.
+  \item Campo \textbf{«Ir al frame»}: para escribir el número de frame exacto.
+  \item Barra deslizante (\emph{slider}) para moverte por el video.
+  \item La \textbf{imagen del video}: al hacer clic sobre ella marcas puntos.
+\end{itemize}
+
+%%=============================================================================
+\section{Preparación de los datos del laboratorio}
+%%=============================================================================
+
+\subsection{Qué archivos necesitas}
+\begin{itemize}
+  \item Uno o varios \textbf{videos} del experimento (uno por lanzamiento).
+  \item Saber la \textbf{distancia real} de un objeto de referencia visible en el
+    video (por ejemplo, el largo de una regla), para calibrar.
+\end{itemize}
+
+\subsection{Cómo organizar los archivos}
+\Accion Crea una carpeta por experimento y nombra los videos de forma clara, por
+ejemplo \texttt{lanzamiento\_10grados.mp4}, \texttt{lanzamiento\_15grados.mp4}, etc.
+
+\subsection{Formato recomendado de los videos}
+\begin{itemize}
+  \item Formatos aceptados: \texttt{mp4}, \texttt{mov}, \texttt{avi},
+    \texttt{mkv}, \texttt{m4v}, \texttt{webm}.
+  \item Recomendado: \textbf{mp4 con códec H.264}.
+  \item Duración corta (solo el tramo del movimiento).
+\end{itemize}
+
+\begin{estrategia}[Recomendaciones para evitar problemas]
+  \begin{itemize}
+    \item Graba con la cámara \textbf{perpendicular} al plano del movimiento y
+      \textbf{fija} (trípode o apoyada).
+    \item Coloca la \textbf{regla de calibración en el mismo plano} que el
+      movimiento.
+    \item Buena iluminación; el objeto bien visible y, si es posible, de un
+      \textbf{color distinto al fondo} (facilita la detección automática).
+    \item Recorta el video para que dure poco: menos frames, más rápido.
+  \end{itemize}
+\end{estrategia}
+
+%%=============================================================================
+\section{Realización del análisis paso a paso}
+%%=============================================================================
+
+Esta es la columna vertebral del trabajo. Sigue las etapas en orden.
+
+\subsection{Etapa 1 --- Cargar el video y elegir el tramo}
+
+\Accion En la barra lateral, pulsa \textbf{«Sube tu video»} y elige tu archivo.
+
+\Verifica Arriba aparecen los datos del video (número de frames, fps, resolución,
+duración). La primera vez, espera el mensaje \emph{«Preparando el video…»}.
+
+\begin{captura}[Etapa 1 con el visor de frames y los datos del video]
+\end{captura}
+
+\Accion Con los botones (\texttt{-10}/\texttt{-5}/\texttt{-1}/\texttt{+1}/%
+\texttt{+5}/\texttt{+10}), el campo \textbf{«Ir al frame»} y la barra, ubica el
+\textbf{frame donde empieza} el movimiento y el \textbf{frame donde termina}.
+
+\Accion Pulsa \textbf{«Usar frame actual como INICIO»} en el primero, y navega al
+final y pulsa \textbf{«Usar frame actual como FINAL»}.
+
+\Verifica Abajo aparece un mensaje verde: \emph{«Intervalo: frame X $\to$ Y…»}.
+
+\begin{ojo}
+  Si cambias el intervalo después de trackear, el programa \textbf{borra los
+  puntos fuera del nuevo rango} y recalcula todo. Elige bien el intervalo antes
+  de marcar puntos.
+\end{ojo}
+
+\subsection{Etapa 2 --- Calibración (ver Sección~\ref{sec:calib})}
+\subsection{Etapa 3 --- Detección y seguimiento (ver Sección~\ref{sec:track})}
+\subsection{Etapa 4 --- Cinemática (ver Sección~\ref{sec:proc})}
+\subsection{Etapa 5 --- Ajuste del modelo (ver Sección~\ref{sec:proc})}
+\subsection{Etapa 6 --- Exportar (ver Sección~\ref{sec:export})}
+
+\begin{obs}
+  Las etapas 2 a 6 se explican en detalle en las secciones siguientes, porque
+  cada una tiene sus propios controles.
+\end{obs}
+
+%%=============================================================================
+\section{Detección y seguimiento de los objetos}
+\label{sec:track}
+%%=============================================================================
+
+En la \textbf{Etapa 3 (Tracking)} marcas la posición del objeto en cada frame.
+Hay dos modos: \textbf{Manual} y \textbf{Automático}.
+
+\subsection{Navegación por frames}
+\begin{itemize}
+  \item \Accion Botones \texttt{-1}/\texttt{+1} para avanzar un frame; \texttt{-5}%
+    /\texttt{+5} y \texttt{-10}/\texttt{+10} para saltos rápidos en videos largos.
+  \item \Accion Campo \textbf{«Ir al frame»}: escribe el número exacto y salta ahí.
+\end{itemize}
+
+\subsection{Seleccionar el intervalo a analizar}
+Se hace en la Etapa~1 (ver arriba). En la Etapa~3, el rango de detección
+automática viene \textbf{pre-cargado con ese intervalo}.
+
+\subsection{Detección automática}
+\Accion Elige el modo \textbf{Automático} y el método:
+\begin{itemize}
+  \item \textbf{Plantilla}: \Accion arrastra un recuadro sobre el objeto en el
+    frame inicial.
+  \item \textbf{Color}: \Accion haz clic sobre el objeto para tomar su color;
+    ajusta la tolerancia y observa la \textbf{máscara} (blanco = detectado).
+  \item \textbf{CSRT}: aparece solo si está disponible; también se arrastra un
+    recuadro.
+\end{itemize}
+
+\Accion Pulsa \textbf{«Ejecutar seguimiento»}.
+
+\Verifica Verás una \textbf{vista previa en vivo} y, al terminar, la imagen con
+\textbf{todas las detecciones superpuestas}.
+
+\begin{captura}[Detección automática con los puntos superpuestos]
+\end{captura}
+
+\SiFalla Si no detecta bien (puntos saltando, objeto perdido): cambia de método
+(prueba \emph{Color} si el objeto tiene color distintivo), ajusta la tolerancia,
+o usa el modo \textbf{Manual}.
+
+\subsection{Revisar y corregir puntos}
+\Accion En la sección \textbf{«Corrección frame por frame»} (o en el modo Manual),
+navega frame a frame. Si un punto está mal, \Accion \textbf{haz clic en la
+posición correcta} para moverlo; o pulsa \textbf{«Borrar punto de este frame»}.
+
+\Verifica En la \textbf{tabla de datos} de abajo puedes revisar y editar los
+valores; también eliminar filas.
+
+\subsection{Marcado manual (alternativa)}
+\Accion Elige modo \textbf{Manual}, fija «Avanzar cada N frames», y \Accion haz
+\textbf{clic sobre el objeto} en cada frame: el video avanza solo.
+
+%%=============================================================================
+\section{Calibración y sistema de referencia}
+\label{sec:calib}
+%%=============================================================================
+
+La \textbf{Etapa 2 (Calibración)} le enseña al programa a convertir píxeles en
+metros y dónde está el origen de coordenadas. \textbf{Sin calibrar, los resultados
+no salen en metros.}
+
+\subsection{Escala espacial (píxel $\to$ metro)}
+\Accion En el selector «¿Qué vas a marcar…?», con \textbf{Punto 1} activo, haz
+clic en un extremo de tu regla; luego, con \textbf{Punto 2}, en el otro extremo.
+
+\Ingresa La \textbf{distancia real} entre esos dos puntos, en metros (por ejemplo,
+\num{0.30} m para una regla de 30~cm).
+
+\begin{captura}[Calibración: dos puntos sobre la regla y el origen marcados]
+\end{captura}
+
+\subsection{Origen de coordenadas}
+\Accion Selecciona \textbf{Origen} y haz clic donde quieras el punto $(0,0)$. El
+eje $Y$ físico apunta hacia \textbf{arriba} (como en física).
+
+\subsection{Ejes con orientación libre (opcional)}
+\Accion Si tu eje $x$ no es horizontal (por ejemplo, quieres alinearlo con un
+plano inclinado), activa \textbf{«Ejes con orientación libre»} y marca un punto
+en la dirección $+x$.
+
+\Accion Pulsa \textbf{«Aplicar calibración»}.
+
+\Verifica Aparece un mensaje verde con la escala (\emph{m/px}) y el origen.
+
+\begin{idea}
+  \textbf{Qué significa cada cosa:} la \emph{escala} dice cuántos metros mide un
+  píxel; el \emph{origen} es el punto desde donde se miden las posiciones; los
+  \emph{ejes} definen las direcciones $x$ e $y$. Si calibras mal (distancia
+  equivocada o regla en otro plano), \textbf{todos} los resultados en metros
+  saldrán mal.
+\end{idea}
+
+\SiFalla Si la escala parece rara (velocidades enormes o minúsculas), revisa que
+la distancia ingresada esté en \textbf{metros} y que hayas marcado bien los dos
+extremos de la regla.
+
+%%=============================================================================
+\section{Procesamiento y análisis de los datos}
+\label{sec:proc}
+%%=============================================================================
+
+\subsection{Qué hace el programa con tus datos}
+Con los puntos marcados y la calibración, el programa calcula el \textbf{tiempo},
+la \textbf{posición en metros}, y por diferencias finitas la \textbf{velocidad} y
+la \textbf{aceleración}. Todo esto está en la \textbf{Etapa 4 (Cinemática)}.
+
+\subsection{Revisar tablas y gráficos}
+\Verifica En la Etapa~4 verás los gráficos de \textbf{posición}, \textbf{velocidad},
+\textbf{aceleración} y \textbf{trayectoria}. Abre \textbf{«Tabla con derivados»}
+para ver los números.
+
+\begin{captura}[Etapa 4: gráficos de posición, velocidad, aceleración y trayectoria]
+\end{captura}
+
+\Accion Si los datos se ven ruidosos (sobre todo la aceleración), activa
+\textbf{«Suavizar posición»} y ajusta la ventana.
+
+\subsection{Ajuste del modelo y ecuación (Etapa 5)}
+\Accion Ve a la \textbf{Etapa 5 (Ajuste)} y elige el \textbf{preset de tu
+laboratorio}. Por ejemplo, para el plano inclinado: \emph{«FIS101 · Lab 1 ·
+Gravedad en plano inclinado»}.
+
+\Accion Elige la variable (posición $\to$ parábola, o velocidad $\to$ recta).
+
+\Verifica El programa muestra la \textbf{aceleración $a$ con su incertidumbre}, la
+curva ajustada sobre los datos y el \textbf{$R^2$} (mientras más cerca de 1, mejor
+el ajuste).
+
+\begin{captura}[Etapa 5: datos con la curva ajustada, el valor de $a$ y el $R^2$]
+\end{captura}
+
+\subsection{Gráfico final del grupo (herramienta «Gráficos»)}
+Para el resultado del grupo (por ejemplo, $a$ en función de $\sin\theta$ de tus 6
+ángulos):
+\begin{itemize}
+  \item \Accion Ve a \textbf{«Gráficos (datos manuales)»}.
+  \item \Accion Elige la plantilla \emph{«FIS101 · g desde a vs sen $\theta$»}.
+  \item \Ingresa en la tabla los pares $(\sin\theta,\ a)$ de cada ángulo.
+  \item \Verifica La app hace el ajuste lineal y muestra \textbf{$g$} (la
+    pendiente) con su incertidumbre y la comparación con el valor teórico.
+\end{itemize}
+
+\subsection{Cómo interpretar los gráficos}
+\begin{idea}
+  \begin{itemize}
+    \item \textbf{Posición vs.\ tiempo}: en el plano inclinado debe curvarse
+      (parábola).
+    \item \textbf{Velocidad vs.\ tiempo}: debe ser aproximadamente una recta; su
+      pendiente es la aceleración.
+    \item \textbf{$R^2$ cercano a 1}: el modelo describe bien tus datos.
+    \item Puntos muy dispersos o fuera de la curva suelen indicar un
+      \textbf{punto mal marcado}: vuelve a la Etapa~3 y corrígelo.
+  \end{itemize}
+\end{idea}
+
+%%=============================================================================
+\section{Resultados y exportación}
+\label{sec:export}
+%%=============================================================================
+
+En la \textbf{Etapa 6 (Exportar)}:
+
+\Accion Marca con \textbf{casillas} qué figuras quieres (posición, velocidad,
+aceleración, trayectoria, error de detección) y si quieres el \textbf{CSV} de datos.
+
+\Accion Pulsa \textbf{«Generar archivos»} y luego \textbf{«Descargar ZIP»} (o
+«Descargar solo el CSV»).
+
+\begin{captura}[Etapa 6: casillas de figuras y botón de descarga]
+\end{captura}
+
+\Guarda Para tu informe, conserva:
+\begin{itemize}
+  \item El \textbf{ZIP} con las figuras (PNG) y el \textbf{CSV} de datos.
+  \item Del gráfico del grupo, el \textbf{PNG/SVG} exportado con el valor de $g$.
+  \item Una \textbf{captura} de la Etapa~5 con el valor de $a$, su incertidumbre y
+    el $R^2$ de cada lanzamiento.
+\end{itemize}
+
+%%=============================================================================
+\section{Errores frecuentes y solución de problemas}
+%%=============================================================================
+
+\begin{table}[htbp]
+  \centering
+  \caption{Problemas frecuentes y su solución.}
+  \label{tab:problemas}
+  \begin{tabular}{@{}p{5.4cm} p{8.1cm}@{}}
+    \toprule
+    \textbf{Problema} & \textbf{Solución} \\
+    \midrule
+    El programa no abre & Revisa que Python esté instalado con «Add to PATH»
+      (Windows). Si ves \texttt{ImportError/UseColumnWith}, corre otra vez
+      \texttt{pip install -r requirements.txt}. \\
+    El video no carga & Verifica el formato (mp4/mov/avi/mkv). Si es \texttt{.mov}
+      de iPhone, conviértelo a H.264 (ver abajo). \\
+    El video se ve mal o «se congela» & Suele ser el códec HEVC/H.265.
+      Conviértelo a H.264. Si es muy largo, recórtalo. \\
+    No se detectan bien los objetos & Cambia de método (prueba \emph{Color});
+      ajusta la tolerancia; o usa el modo \emph{Manual}. \\
+    Los puntos detectados son incorrectos & Corrígelos: navega al frame y haz
+      clic en la posición correcta, o edita la tabla. \\
+    La calibración da resultados extraños & Revisa que la distancia esté en
+      \textbf{metros} y que marcaste bien los extremos de la regla. \\
+    El programa parece detenido & Espera: la primera precarga del video o la
+      detección pueden tardar. Mira la barra de progreso. \\
+    Los gráficos no aparecen & Necesitas \textbf{calibración aplicada} y al menos
+      2 puntos \emph{dentro del intervalo}. \\
+    No se pueden exportar los resultados & Primero marca puntos y calibra; luego
+      pulsa «Generar archivos» antes de descargar. \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{alerta}
+  \textbf{Convertir un video a H.264} (si el \texttt{.mov} no carga), con la
+  herramienta \texttt{ffmpeg} desde la terminal:
+\end{alerta}
+\begin{lstlisting}[caption={Convertir un video a H.264.}]
+ffmpeg -i entrada.mov -c:v libx264 -pix_fmt yuv420p salida.mp4
+\end{lstlisting}
+
+%%=============================================================================
+\section{Procedimiento recomendado para el Laboratorio 1}
+%%=============================================================================
+
+\begin{receta}[Flujo completo, de principio a fin]
+  \begin{enumerate}
+    \item \textbf{Abre} el programa (doble clic en el lanzador) y espera a que
+      cargue en el navegador.
+    \item \textbf{Etapa 1:} sube el video, revísalo frame a frame y define el
+      \textbf{intervalo} (frame inicial y final del movimiento).
+    \item \textbf{Etapa 2:} calibra --- marca los dos puntos de la regla, ingresa
+      la distancia real en metros, marca el origen y \textbf{aplica}.
+    \item \textbf{Etapa 3:} trackea el objeto (automático o manual) y
+      \textbf{revisa/corrige} los puntos.
+    \item \textbf{Etapa 4:} mira los gráficos de posición, velocidad y
+      aceleración; activa suavizado si hay ruido.
+    \item \textbf{Etapa 5:} elige el preset de tu laboratorio y obtén el valor
+      (por ejemplo, la aceleración $a$) con su incertidumbre y $R^2$. Anótalo.
+    \item \textbf{Repite} las etapas 1--5 para cada lanzamiento/ángulo.
+    \item \textbf{Gráficos:} con la plantilla de tu laboratorio, ingresa los pares
+      del grupo (por ejemplo $\sin\theta$ vs $a$) y obtén el resultado final
+      (por ejemplo $g$).
+    \item \textbf{Etapa 6:} exporta las figuras y el CSV. \Guarda todos los
+      archivos para el informe.
+  \end{enumerate}
+\end{receta}
+
+\begin{resumen}
+  \begin{itemize}
+    \item El análisis va \textbf{en orden}, de la Etapa~1 a la~6.
+    \item \textbf{Calibrar bien} es lo más importante: define los resultados en
+      metros.
+    \item Un \textbf{punto mal marcado} se nota como un dato fuera de la curva;
+      corrígelo en la Etapa~3.
+    \item Guarda \textbf{CSV + figuras + capturas} de los valores ajustados para
+      el informe.
+  \end{itemize}
+\end{resumen}
+
+\end{document}
