@@ -269,9 +269,30 @@ Muestra los gráficos de posición, velocidad, aceleración y trayectoria. Activ
 \subsection{Etapa 5 — Ajuste de modelos}
 
 Elige un \textbf{preset} según tu laboratorio (gravedad en plano inclinado,
-velocidad terminal, colisiones, péndulo cónico, péndulo bifilar, MHD) o el modo
-\textbf{genérico}. El programa entrega los parámetros con su \textbf{incertidumbre}
-y el coeficiente de determinación $R^{2}$.
+arrastre y velocidad terminal, colisiones, péndulo cónico, péndulo bifilar, MHD)
+o el modo \textbf{genérico}. El programa entrega los parámetros con su
+\textbf{incertidumbre} y el coeficiente de determinación $R^{2}$.
+
+\begin{obs}[Los laboratorios 2 se cierran fuera de la app]
+  Tanto el Lab~2 de FIS101 como el de FIS201 se resuelven con un ajuste lineal
+  sobre \emph{varios} videos: $v_t^{2}$ contra $m$ en uno, $T^{2}$ contra $H$ en
+  el otro. Ese ajuste se hace en una planilla, como pide tu guía. Lo que
+  entrega la app por video es el dato que entra a ese ajuste ($v_t$ o $T$).
+\end{obs}
+
+Además, en esos dos presets hay un panel plegable de \textbf{control de orden de
+magnitud}: entregando la masa y el diámetro del filtro (FIS101), o la masa, la
+separación de los hilos y su largo (FIS201), calcula el $C_d$ de esa caída o el
+$I_{zz}$ de ese largo. \textbf{No es el resultado que se informa}: sirve para
+darse cuenta en el momento de un error de calibración, de unidades o de lectura,
+antes de acumular veinte tomas mal medidas.
+
+\begin{errcomun}
+  En el péndulo bifilar, usar el \textbf{largo de la barra} en vez de $d$, la
+  \emph{semiseparación entre los hilos}, da un momento de inercia nueve veces
+  mayor. Y contar los cruces por el equilibrio en ambos sentidos, en vez de
+  siempre en el mismo, entrega medio período y un $I_{zz}$ cuatro veces menor.
+\end{errcomun}
 
 \subsection{Etapa 6 — Exportar}
 

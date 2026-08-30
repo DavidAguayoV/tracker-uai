@@ -196,11 +196,24 @@ del péndulo en FIS201.
 |-------|-------------|-------------|
 | — | Genérico / manual | Ajuste libre de cualquier modelo |
 | FIS101 | Lab 1 · Gravedad en plano inclinado | Aceleración `a` (parábola x(t) **o** recta v(t)) |
-| FIS101 | Lab 2 · Velocidad terminal | `v_t` (meseta de v(t)) |
+| FIS101 | Lab 2 · Arrastre y velocidad terminal | `v_t` (meseta de v(t)) + control de `C_d` |
 | FIS101 | Lab 3 · Colisiones | `v_i`, `v_f` (recta por tramos) |
 | FIS201 | Lab 1 · Péndulo cónico (Kepler) | `T`, semiejes, focos, áreas barridas |
-| FIS201 | Lab 2 · Péndulo bifilar | `T` (cruces por cero) |
+| FIS201 | Lab 2 · Péndulo bifilar | `T` (cruces por cero) + control de `I_zz` |
 | FIS301 | Lab 3 · Fuerza de Lorentz / MHD | Rapidez `v` del flujo |
+
+#### Alcance de los presets de Lab 2
+
+Los dos laboratorios 2 se resuelven con un **ajuste lineal sobre varios
+videos**: `v_t²` contra `m` en FIS101 (cinco masas del bloque A) y `T²` contra
+`H` en FIS201 (seis largos de hilo). Ese ajuste **se hace fuera de la app**, en
+Excel, como piden las guías.
+
+Lo que la app entrega por video es el dato que entra a ese ajuste (`v_t` o `T`)
+y un **control de orden de magnitud** —`C_d` de esa caída, `I_zz` de ese
+largo— para detectar en el momento un error de calibración, de unidades o de
+lectura, antes de acumular veintiuna tomas mal medidas. Los paneles lo dicen
+explícitamente para que nadie informe ese número como resultado.
 
 ---
 
@@ -260,6 +273,7 @@ tracker-uai/
 ├── README.md                    # este archivo
 ├── MANUAL_DE_USO.md             # manual de uso para el usuario final
 ├── LEEME_ESTUDIANTES.txt        # guía corta para estudiantes
+├── CHANGELOG.md                 # registro de cambios por versión
 ├── LICENSE                      # licencia MIT
 ├── Iniciar_Tracker_UAI.bat      # lanzador Windows (doble clic)
 ├── iniciar_tracker.sh           # lanzador macOS / Linux

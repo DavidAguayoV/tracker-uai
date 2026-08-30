@@ -21,6 +21,7 @@ copy /y "LEEME_ESTUDIANTES.txt" "%STAGE%\TrackerUAI\" >nul
 copy /y "MANUAL_DE_USO.md"   "%STAGE%\TrackerUAI\" >nul
 copy /y "LICENSE"          "%STAGE%\TrackerUAI\" >nul
 copy /y "conftest.py"      "%STAGE%\TrackerUAI\" >nul
+copy /y "CHANGELOG.md"     "%STAGE%\TrackerUAI\" >nul
 copy /y "Iniciar_Tracker_UAI.bat" "%STAGE%\TrackerUAI\" >nul
 copy /y "iniciar_tracker.sh" "%STAGE%\TrackerUAI\" >nul
 xcopy "core"    "%STAGE%\TrackerUAI\core\"    /e /i /q >nul
