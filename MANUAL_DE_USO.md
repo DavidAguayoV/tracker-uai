@@ -118,42 +118,66 @@ video**. Hay dos grandes usos:
 
 ### Análisis de video
 
-**Etapa 1 · Video**
+No hace falta que memorices el orden: **cada paso termina con un botón
+"Continuar →"** que te lleva al siguiente, y la barra lateral muestra tu
+progreso. Igual puedes saltar libremente a cualquier paso cuando quieras.
+
+**Paso 1 · Video** — elegir el tramo a analizar
 1. Sube tu video (mp4, mov, avi, mkv, m4v o webm) en la barra lateral.
-2. Usa el reproductor para ubicar el tramo de interés.
-3. Con el slider y los botones, ubica el frame exacto.
-4. Define el **intervalo de procesamiento** (frame inicial y final): así el
-   análisis trabaja solo sobre ese tramo y es mucho más rápido.
+2. Con el deslizador y los botones, ubica el frame donde **empieza** el
+   movimiento y pulsa **INICIO**; luego ve al frame donde **termina** y pulsa
+   **FINAL**.
+3. Abajo verás qué quedó seleccionado: una barra con el tramo sobre la duración
+   total, y las **miniaturas del primer y último frame**. Todo el análisis usa
+   solo ese tramo, y así el programa va mucho más rápido.
 
-**Etapa 2 · Calibración** (convierte píxeles a metros)
-1. Marca **dos puntos** de una distancia que conozcas (ej. una regla) y escribe
-   esa distancia en metros.
-2. Marca el **origen** de coordenadas.
-3. (Opcional) Activa **"Ejes con orientación libre"** si tu eje X no es
-   horizontal (ej. un plano inclinado) y marca la dirección +X.
-4. Pulsa **Aplicar calibración**.
+**Paso 2 · Calibración** — convertir píxeles a metros
+1. Sigue la lista numerada: haz clic en **un extremo** de tu regla, luego en
+   **el otro**, y por último donde quieras el **origen (0, 0)**. El programa te
+   dice en cada momento qué toca marcar.
+2. Escribe cuánto mide de verdad esa distancia, **eligiendo la unidad**
+   (cm, mm o m). Si mediste una regla de 30 cm, elige `cm` y escribe `30`.
+3. **No hay que pulsar ningún botón:** la calibración se aplica sola en cuanto
+   están los tres puntos.
+4. Revisa la verificación: el programa te dice a cuánto equivale un píxel y qué
+   ancho real tiene el encuadre. Si ese ancho no se parece a lo que ves en el
+   video, revisa la distancia y su unidad.
+5. (Opcional) Activa **"Mi eje X no es horizontal"** si trabajas en un plano
+   inclinado, y marca la dirección +X.
 
-**Etapa 3 · Tracking** (seguir el objeto)
-- **Manual:** haz clic sobre el objeto en cada frame; el video avanza solo.
-- **Automático:** elige *Plantilla* (arrastras un recuadro sobre el objeto),
-  *Color* (haces clic para tomar su color) o *CSRT*. Verás la detección en vivo
-  y, al terminar, todas las detecciones superpuestas.
-- **Corregir:** navega frame por frame y haz clic para mover un punto mal
-  detectado, o bórralo. También puedes editar la **tabla** de datos directamente.
+**Paso 3 · Tracking** — seguir el objeto
+- Viene en **Automático**, que es lo que conviene casi siempre:
+  - *Plantilla* (o *CSRT*): **haz clic sobre el objeto**. Aparece de inmediato
+    un recuadro verde que puedes agrandar o achicar con el deslizador, y un
+    recorte ampliado de lo que se va a seguir. Si prefieres, también puedes
+    arrastrar para dibujar el recuadro a mano.
+  - *Color*: haz clic sobre el objeto para tomar su color.
+  - Pulsa **Ejecutar seguimiento** y verás la detección en vivo.
+- Al terminar, el programa avisa si quedaron **frames sin detección**.
+- **Manual:** si el automático se pierde, haz clic sobre el objeto en cada
+  frame; el video avanza solo.
+- **Corregir:** en los desplegables puedes ver todas las detecciones
+  superpuestas y corregir puntos frame por frame. También puedes editar la
+  **tabla** de datos directamente.
 
-**Etapa 4 · Cinemática**
-- Muestra los gráficos de posición, velocidad, aceleración y trayectoria.
+**Paso 4 · Cinemática**
+- Arriba, un **resumen del movimiento**: puntos analizados, duración, distancia
+  recorrida, desplazamiento neto, rapidez media y máxima, aceleración media.
+- Un bloque de **calidad de los datos** te avisa si hay mucho ruido, frames
+  faltantes o pocos puntos para un ajuste confiable.
+- Abajo, los gráficos de posición, velocidad, aceleración y trayectoria.
 - Activa **Suavizar** si los datos tienen ruido (útil sobre todo para la
-  aceleración).
+  aceleración). Las figuras que exportes usarán esa misma señal.
 
-**Etapa 5 · Ajuste**
-- Elige un **preset** según tu laboratorio (gravedad, velocidad terminal,
-  colisiones, péndulo cónico, bifilar, MHD) o el modo **genérico**.
+**Paso 5 · Ajuste**
+- Elige un **preset** según tu laboratorio (gravedad, arrastre y velocidad
+  terminal, colisiones, péndulo cónico, bifilar, MHD) o el modo **genérico**.
 - El programa entrega los parámetros con su **incertidumbre** y el **R²**.
 
-**Etapa 6 · Exportar**
-- Marca con **casillas** qué gráficos quieres y descarga un **ZIP** con las
-  imágenes (PNG) y el **CSV** de todos los datos.
+**Paso 6 · Exportar**
+- Las figuras **se ven en pantalla** y cada una tiene su botón de descarga.
+- También puedes bajar el **CSV** con todos los datos, o un **ZIP** con todo
+  junto.
 
 ### 📊 Gráficos (datos manuales) — sin video
 

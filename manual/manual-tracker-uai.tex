@@ -217,56 +217,106 @@ corresponda.
 \section{Análisis de video, etapa por etapa}
 %%=============================================================================
 
-La barra lateral izquierda contiene el selector de etapas y la carga del video.
+La barra lateral izquierda contiene el selector de etapas, la carga del video y
+un indicador de tu progreso.
 
-\subsection{Etapa 1 — Video}
+\begin{obs}[No hace falta memorizar el orden]
+  Cada paso termina con un botón \textbf{«Continuar $\rightarrow$»} que te lleva
+  al siguiente. Si prefieres saltar a otro paso, el selector de la barra lateral
+  sigue disponible en todo momento: nada queda bloqueado.
+\end{obs}
 
-Sube tu video (mp4, mov, avi, mkv, m4v o webm). Usa el reproductor y los controles
-cuadro a cuadro para ubicar el tramo de interés y define el \textbf{intervalo de
-procesamiento} (cuadro inicial y final).
+\subsection{Paso 1 — Video: elegir el tramo a analizar}
 
-\begin{idea}
-  Acotar el intervalo hace que todo el análisis sea mucho más rápido: el programa
-  trabaja solo sobre el tramo que te interesa, no sobre el video completo.
-\end{idea}
+Sube tu video (mp4, mov, avi, mkv, m4v o webm). Lo que se hace en este paso es
+\textbf{recortar el tramo} que contiene el movimiento que te interesa.
 
-\subsection{Etapa 2 — Calibración}
-
-Convierte píxeles a metros. Marca dos puntos de una distancia conocida (por
-ejemplo, una regla) y escribe esa distancia en metros; luego marca el origen de
-coordenadas.
-
-\begin{receta}[Calibrar]
+\begin{receta}[Fijar el tramo]
   \begin{enumerate}
-    \item Marca el punto 1 y el punto 2 sobre la distancia conocida.
-    \item Escribe la distancia real entre ambos, en metros.
-    \item Marca el origen de coordenadas.
-    \item (Opcional) Activa \emph{«Ejes con orientación libre»} si el eje $x$ no es
-      horizontal (por ejemplo, un plano inclinado) y marca la dirección $+x$.
-    \item Pulsa \textbf{Aplicar calibración}.
+    \item Con el deslizador y los botones, ubica el cuadro donde \textbf{empieza}
+      el movimiento y pulsa \textbf{INICIO}.
+    \item Ve al cuadro donde \textbf{termina} y pulsa \textbf{FINAL}.
+    \item Abajo aparece qué quedó seleccionado: una barra con el tramo sobre la
+      duración total y las \textbf{miniaturas del primer y del último cuadro}.
+      Compruébalas antes de seguir.
   \end{enumerate}
 \end{receta}
 
-\subsection{Etapa 3 — Tracking (seguimiento del objeto)}
+\begin{idea}
+  Acotar el tramo hace que todo el análisis sea mucho más rápido: el programa
+  trabaja solo sobre lo que te interesa, no sobre el video completo.
+\end{idea}
 
-Hay dos modos. En el \textbf{manual}, haces clic sobre el objeto en cada cuadro y
-el video avanza solo. En el \textbf{automático}, eliges \emph{Plantilla} (arrastras
-un recuadro sobre el objeto), \emph{Color} (haces clic para tomar su color) o
-\emph{CSRT}; verás la detección en vivo y, al terminar, todas las detecciones
-superpuestas.
+\subsection{Paso 2 — Calibración: cuánto mide un píxel}
+
+El video está en píxeles, pero tu informe necesita metros. El programa te guía
+con una lista numerada y te dice en cada momento qué toca marcar.
+
+\begin{receta}[Calibrar]
+  \begin{enumerate}
+    \item Haz clic en \textbf{un extremo} de la distancia conocida (una regla,
+      una huincha, una hoja) y luego en \textbf{el otro}.
+    \item Haz clic donde quieras el \textbf{origen} de coordenadas.
+    \item Escribe cuánto mide esa distancia \textbf{eligiendo la unidad}
+      (\si{\centi\meter}, \si{\milli\meter} o \si{\meter}).
+    \item (Opcional) Activa \emph{«Mi eje $x$ no es horizontal»} si trabajas en un
+      plano inclinado, y marca la dirección $+x$.
+  \end{enumerate}
+  No hay que pulsar ningún botón: la calibración \textbf{se aplica sola} en
+  cuanto están todos los datos.
+\end{receta}
+
+\begin{errcomun}
+  Escribir \texttt{30} pensando en una regla de \SI{30}{\centi\meter} pero con la
+  unidad en metros. Eso deja todos los resultados escalados por un factor 100.
+  Por eso el programa muestra a cuánto equivale un píxel y qué \textbf{ancho real}
+  tendría el encuadre: si ese ancho no se parece a lo que ves en el video, la
+  distancia o su unidad están mal.
+\end{errcomun}
+
+\subsection{Paso 3 — Tracking: seguir el objeto}
+
+El programa arranca en modo \textbf{automático}, que es lo que conviene casi
+siempre: señalas el objeto una sola vez y el programa lo busca en el resto del
+tramo.
+
+\begin{receta}[Seguimiento automático por plantilla]
+  \begin{enumerate}
+    \item \textbf{Haz clic justo encima del objeto.} Aparece de inmediato un
+      recuadro verde y, debajo, un recorte ampliado de lo que se va a seguir.
+    \item Ajusta el \textbf{tamaño del recuadro} con el deslizador: debe encerrar
+      el objeto y lo menos posible de fondo.
+    \item Pulsa \textbf{Ejecutar seguimiento}. Verás la detección en vivo.
+  \end{enumerate}
+  Si prefieres, también puedes \textbf{arrastrar} para dibujar el recuadro a mano.
+  Los otros métodos son \emph{Color} (clic para tomar el color del objeto) y
+  \emph{CSRT}.
+\end{receta}
 
 \begin{ojo}
-  Tras la detección automática puedes \textbf{corregir}: navega cuadro por cuadro y
-  haz clic para mover un punto mal detectado, o bórralo. También puedes editar la
-  tabla de datos directamente.
+  Al terminar, el programa avisa si quedaron \textbf{cuadros sin detección}: es la
+  señal de que el seguimiento perdió el objeto. En los desplegables puedes ver
+  todas las detecciones superpuestas y \textbf{corregir} cuadro por cuadro; también
+  puedes editar la tabla de datos directamente. Si el automático falla del todo,
+  cambia al modo \textbf{manual} y haz clic sobre el objeto en cada cuadro.
 \end{ojo}
 
-\subsection{Etapa 4 — Cinemática}
+\subsection{Paso 4 — Cinemática}
 
-Muestra los gráficos de posición, velocidad, aceleración y trayectoria. Activa el
-\textbf{suavizado} si los datos tienen ruido, sobre todo para la aceleración.
+Arriba aparece un \textbf{resumen del movimiento}: cuántos puntos se analizaron,
+la duración, la distancia recorrida, el desplazamiento neto, la rapidez media y
+máxima y la aceleración media. Un bloque de \textbf{calidad de los datos} te avisa
+si hay mucho ruido de marcado, cuadros faltantes o pocos puntos para un ajuste
+confiable. Abajo están los gráficos de posición, velocidad, aceleración y
+trayectoria.
 
-\subsection{Etapa 5 — Ajuste de modelos}
+\begin{obs}
+  Activa el \textbf{suavizado} si los datos tienen ruido, sobre todo para la
+  aceleración. Las figuras que exportes usarán esa misma señal suavizada, de modo
+  que la figura de tu informe es exactamente la que viste en pantalla.
+\end{obs}
+
+\subsection{Paso 5 — Ajuste de modelos}
 
 Elige un \textbf{preset} según tu laboratorio (gravedad en plano inclinado,
 arrastre y velocidad terminal, colisiones, péndulo cónico, péndulo bifilar, MHD)
@@ -294,10 +344,13 @@ antes de acumular veinte tomas mal medidas.
   siempre en el mismo, entrega medio período y un $I_{zz}$ cuatro veces menor.
 \end{errcomun}
 
-\subsection{Etapa 6 — Exportar}
+\subsection{Paso 6 — Exportar}
 
-Marca con casillas qué gráficos quieres y descarga un archivo comprimido (ZIP) con
-las imágenes (PNG) y el archivo CSV con todos los datos crudos y derivados.
+Las figuras (posición, velocidad, aceleración, trayectoria y error de detección)
+\textbf{se ven en pantalla} y cada una tiene su propio botón de descarga, así que
+puedes bajar solo la que necesitas para tu informe. También puedes descargar el
+\textbf{CSV} con todos los datos crudos y derivados, o un \textbf{ZIP} con todo
+junto.
 
 %%=============================================================================
 \section{Pestaña «Gráficos» (datos manuales)}

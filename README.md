@@ -150,29 +150,45 @@ Pensado para Windows, sin que el estudiante sepa programar:
 
 ## Flujo de uso (por etapas)
 
-La barra lateral tiene el selector de **Etapa** y la carga del video.
+La barra lateral tiene el selector de **Etapa**, la carga del video y un
+**indicador de progreso**. Cada etapa termina con un botón **Continuar →** que
+lleva a la siguiente, de modo que un estudiante que abre el programa por primera
+vez puede recorrer todo el análisis sin volver a la barra lateral. La navegación
+libre entre etapas se mantiene: nada queda bloqueado.
 
-1. **Video** — Sube el archivo (mp4/mov/avi/mkv/m4v/webm). Reproductor con
-   play/pausa, navegación frame a frame y **selección del intervalo** de
-   frames a procesar (ahorra tiempo si solo interesa un tramo).
+1. **Video** — Sube el archivo (mp4/mov/avi/mkv/m4v/webm) y **recorta el tramo**
+   que se va a analizar: todo lo posterior usa solo ese tramo. La etapa cierra
+   mostrando qué quedó seleccionado (barra del tramo sobre el total y
+   **miniaturas del frame inicial y final**).
 2. **Calibración** — Marca dos puntos de **distancia conocida** (escala px→m) y
-   el **origen**. Opcional: **ejes con orientación libre** (marca la dirección
-   +X) para montajes como un plano inclinado. El eje Y físico apunta hacia
-   arriba.
-3. **Tracking** — Dos modos:
+   el **origen**, guiado por una checklist numerada. La distancia se escribe en
+   **cm, mm o m**, y la calibración **se aplica sola** al completarse. Se
+   muestra a cuánto equivale un píxel y el ancho real del encuadre, con aviso si
+   el valor es implausible. Opcional: **ejes con orientación libre** (marca la
+   dirección +X) para montajes como un plano inclinado. El eje Y físico apunta
+   hacia arriba.
+3. **Tracking** — Arranca en **automático**:
+   - **Plantilla / CSRT:** un **clic sobre el objeto** crea el recuadro (con
+     deslizador de tamaño y recorte ampliado de lo seleccionado); también puedes
+     arrastrar para dibujarlo a mano.
+   - **Color:** clic para tomar el color, con vista previa de la máscara HSV.
    - **Manual:** clic sobre el objeto en cada frame (con auto-avance).
-   - **Automático:** *Plantilla* (arrastras un recuadro), *Color* (HSV) o
-     *CSRT*. Muestra preview en vivo y, al terminar, todas las detecciones
-     superpuestas para revisar. Puedes **corregir** puntos frame por frame.
+   - Al terminar se avisa de los **frames sin detección**. La vista con todas las
+     detecciones superpuestas y la corrección frame a frame quedan en
+     desplegables, para no hacer esperar a quien solo quiere seguir.
    - La **tabla** es editable: corrige `x_px/y_px` o elimina filas.
-4. **Cinemática** — Gráficos de posición, velocidad, aceleración y trayectoria.
-   Suavizado opcional Savitzky-Golay (ventana y orden configurables).
+4. **Cinemática** — **Resumen numérico** del movimiento (duración, distancia
+   recorrida, desplazamiento neto, rapidez media y máxima, aceleración media),
+   **calidad de los datos** (ruido de marcado, frames faltantes) y los gráficos
+   de posición, velocidad, aceleración y trayectoria. Suavizado opcional
+   Savitzky-Golay (ventana y orden configurables).
 5. **Ajuste** — Presets por laboratorio (ver abajo) + ajuste **genérico**
    (lineal, parabólico, sinusoidal, amortiguado, exponencial) con parámetros e
    **incertidumbres** (raíz de la diagonal de la covarianza) y R².
-6. **Exportar** — Elige con **casillas** qué figuras exportar (posición,
-   velocidad, aceleración, trayectoria, error de detección) y descarga un
-   **ZIP** con las PNG + el **CSV** de datos crudos y derivados.
+6. **Exportar** — Las figuras (posición, velocidad, aceleración, trayectoria,
+   error de detección) **se ven en pantalla** y cada una tiene su botón de
+   descarga. También puedes bajar el **CSV** de datos crudos y derivados, o un
+   **ZIP** con todo junto.
 
 **📊 Gráficos (datos manuales)** — Herramienta **independiente del video**
 (no requiere cargar nada): el estudiante ingresa datos X e Y en una tabla,
@@ -256,9 +272,14 @@ explícitamente para que nadie informe ese número como resultado.
 python -m pytest
 ```
 
-Cubren `core/kinematics.py` y `core/fitting.py`: verifican que un movimiento
-sintético (MRU, tiro parabólico, colisión, péndulo cónico, etc.) se ajusta con
-el error esperado.
+Cubren `core/kinematics.py` y `core/fitting.py` (un movimiento sintético —MRU,
+tiro parabólico, colisión, péndulo cónico— se ajusta con el error esperado), la
+selección del objeto por clic y las figuras exportadas.
+
+`tests/test_flujo_app.py` es una **prueba de integración de la interfaz**: usa
+`streamlit.testing.AppTest` para ejecutar `app.py` headless y verificar que las
+seis etapas se dibujen sin excepciones y que los botones **Continuar** lleven
+del Paso 1 al Paso 6. Necesita `manual/ejemplos/carro.mp4`; si falta, se omite.
 
 ---
 
@@ -294,7 +315,9 @@ tracker-uai/
 │   └── manual-tracker-uai.pdf
 └── tests/
     ├── test_kinematics.py
-    └── test_fitting.py
+    ├── test_fitting.py
+    ├── test_seleccion_y_export.py  # recuadro por clic, figuras exportadas
+    └── test_flujo_app.py           # integración de la UI (streamlit AppTest)
 ```
 
 ---

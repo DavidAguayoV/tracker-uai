@@ -2,6 +2,89 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
 
+## [1.2] — 2026-08-30
+
+Revisión completa de la interfaz, centrada en que un estudiante que abre el
+programa por primera vez sepa en todo momento qué tiene que hacer.
+
+### Flujo guiado
+
+- **Botones "Continuar →" al final de cada etapa.** Antes no existía ninguno:
+  el selector de etapa de la barra lateral no tenía `key`, así que no había
+  forma de cambiar de etapa por programa y el estudiante tenía que descubrir
+  solo que debía volver a la barra lateral.
+- **Indicador de progreso** en la barra lateral (tramo elegido / calibración
+  aplicada / objeto seguido, con el número de puntos). La navegación libre
+  entre etapas se mantiene: nada queda bloqueado.
+- Cada etapa abre diciendo **para qué sirve**, en una frase.
+
+### Paso 1 · Video
+
+- La etapa deja claro que lo que se hace aquí es **recortar el tramo** a
+  analizar, y por qué conviene.
+- **Confirmación visual de lo seleccionado**: barra que sitúa el tramo sobre la
+  duración total y **miniaturas del frame inicial y del final**.
+- El aviso sobre perspectiva pasa a un desplegable, para que la etapa abra con
+  la tarea y no con una advertencia.
+
+### Paso 2 · Calibración
+
+- **Checklist numerada** con el estado de cada punto y una marca de dónde estás,
+  más una instrucción grande y explícita para el paso actual.
+- **Selector de unidad (cm/mm/m)** para la distancia conocida. Pedirla solo en
+  metros invitaba a escribir `30` por una regla de 30 cm: un error de factor
+  100 que nada detectaba.
+- **La calibración se aplica sola** al completarse. Ya no hace falta acordarse
+  de pulsar un botón, cuyo olvido dejaba las columnas en metros vacías sin
+  explicación visible.
+- **Verificación de plausibilidad**: se muestra a cuánto equivale un píxel y el
+  ancho real del encuadre, y se avisa si ese ancho no tiene sentido para un
+  laboratorio.
+
+### Paso 3 · Tracking
+
+- **Arranca en modo automático** (plantilla). Marcar a mano cientos de frames
+  era la principal causa de abandono en la primera sesión.
+- **Un clic sobre el objeto basta**: crea un recuadro verde centrado ahí, con
+  deslizador de tamaño y un **recorte ampliado de lo seleccionado**. Antes la
+  selección era solo por arrastre y un clic simple producía un recuadro de área
+  nula que se descartaba **en silencio**: no aparecía nada ni ningún mensaje. El
+  arrastre sigue disponible; un arrastre de pocos píxeles se interpreta como
+  clic para no generar plantillas inservibles.
+- **La vista superpuesta ya no se genera sola.** Calcula una mediana sobre todos
+  los frames y obligaba a esperar antes de poder seguir; ahora está tras un
+  botón. En su lugar se avisa, sin costo, de los **frames sin detección**.
+
+### Paso 4 · Cinemática
+
+- **Resumen numérico del movimiento**: puntos analizados, duración, distancia
+  recorrida, desplazamiento neto, rapidez media y máxima, aceleración media e
+  intervalo entre puntos.
+- **Bloque de calidad de los datos**: ruido de marcado estimado, frames
+  faltantes y aviso si hay muy pocos puntos para un ajuste confiable.
+- Los controles de suavizado pasan a un desplegable.
+
+### Paso 6 · Exportar
+
+- **Las figuras se ven en pantalla** y cada una tiene su propio botón de
+  descarga. Antes había que marcar casillas y pulsar "Generar" a ciegas, y la
+  etapa parecía exportar solo el CSV.
+- El CSV y el ZIP con todo siguen disponibles.
+
+### Corregido
+
+- **La figura exportada no coincidía con la de la pantalla.** Con el suavizado
+  activo, los gráficos mostraban la posición suavizada (`x_s`) pero los PNG
+  exportaban la cruda (`x_m`): el informe terminaba con una figura distinta de
+  la que el estudiante había visto.
+
+### Notas
+
+- La suite pasó de 39 a 69 tests. Los nuevos incluyen una prueba de integración
+  con `streamlit.testing.AppTest` que verifica que las seis etapas se dibujen
+  sin excepciones y que la cadena de botones lleve del Paso 1 al Paso 6.
+- El Paso 5 (Ajuste) no cambió, salvo el botón de avance.
+
 ## [1.1] — 2026-08-29
 
 Dos frentes: que instalar la app en Windows deje de doler, y que los presets
