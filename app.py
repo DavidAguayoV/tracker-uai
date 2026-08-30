@@ -23,7 +23,9 @@ import streamlit as st
 from streamlit_image_coordinates import streamlit_image_coordinates
 
 from core.autotrack import (
+    box_from_click,
     csrt_available,
+    default_box_size,
     hsv_range_from_pixel,
     track_color,
     track_csrt,
@@ -46,7 +48,12 @@ from core.fitting import (
     read_plateau,
     swept_area_segments,
 )
-from core.kinematics import kinematics_dataframe
+from core.kinematics import (
+    frame_gaps,
+    kinematics_dataframe,
+    motion_summary,
+    position_columns,
+)
 from core.tracking import TrackTable, from_dataframe
 from core.video import VideoReader, save_uploaded_to_temp
 from models.experiment_presets import PRESETS, preset_labels
@@ -57,6 +64,12 @@ st.set_page_config(page_title="Tracker UAI", page_icon="🎥", layout="wide")
 # Ancho máximo (px) al que mostramos el frame para marcar clics / revisar.
 # Acotado para que el video no ocupe toda la pantalla en layout ancho.
 DISPLAY_WIDTH = 680
+
+# Un arrastre por debajo de este tamaño se interpreta como clic simple.
+# El componente entrega x1,y1,x2,y2 también cuando solo se hace clic
+# (x1 y x2 coinciden salvo redondeo), y un arrastre accidental de unos
+# pocos píxeles daría una plantilla inservible.
+MIN_ARRASTRE_PX = 12
 
 
 # --------------------------------------------------------------------------
@@ -77,7 +90,8 @@ def _init_state() -> None:
     st.session_state.setdefault("calib_p2", None)
     st.session_state.setdefault("calib_origin", None)
     st.session_state.setdefault("calib_target", "Punto 1 (escala)")
-    st.session_state.setdefault("calib_real_dist", 1.0)
+    st.session_state.setdefault("calib_real_dist", 0.30)   # en METROS
+    st.session_state.setdefault("calib_dist_unit", "cm")   # unidad mostrada
     st.session_state.setdefault("calib_xdir", None)    # punto que define +X
     st.session_state.setdefault("calib_use_rotation", False)
     st.session_state.setdefault("calibration", None)   # objeto Calibration
@@ -86,7 +100,10 @@ def _init_state() -> None:
     st.session_state.setdefault("track", TrackTable())
     st.session_state.setdefault("track_step", 1)       # cada cuántos frames marcar
     st.session_state.setdefault("_track_last_click", None)
-    st.session_state.setdefault("track_mode", "Manual")
+    # Por defecto se ofrece el seguimiento automático: marcar a mano cientos
+    # de frames es la principal causa de abandono en la primera sesión.
+    st.session_state.setdefault("track_mode", "Automático")
+    st.session_state.setdefault("auto_box_size", None)  # lado del recuadro (px)
     st.session_state.setdefault("auto_roi", None)      # (x,y,w,h) para plantilla/CSRT
     st.session_state.setdefault("auto_hsv", None)      # (lower, upper) para color
     st.session_state.setdefault("_auto_last_click", None)
@@ -383,6 +400,77 @@ def _load_video(uploaded) -> bool:
     return True
 
 
+# --------------------------------------------------------------------------
+# Navegación entre etapas
+# --------------------------------------------------------------------------
+ETAPAS = [
+    "1 · Video", "2 · Calibración", "3 · Tracking", "4 · Cinemática",
+    "5 · Ajuste", "6 · Exportar", "📊 Gráficos (datos manuales)",
+    "📐 Medición (foto)",
+]
+
+# Navegación diferida: un botón "Continuar" no puede escribir directamente en
+# st.session_state["etapa"], porque Streamlit prohíbe modificar la clave de un
+# widget ya instanciado en la misma pasada (el selector de la barra lateral se
+# crea antes que las etapas). El botón deja aquí su destino y se aplica al
+# comienzo de la pasada siguiente.
+if st.session_state.get("_goto"):
+    st.session_state["etapa"] = st.session_state.pop("_goto")
+st.session_state.setdefault("etapa", ETAPAS[0])
+
+
+def _set_goto(destino: str) -> None:
+    """Deja anotada la etapa de destino. Se usa como callback ``on_click``.
+
+    Los callbacks corren **antes** de que el script se vuelva a ejecutar, así
+    que el destino ya está anotado cuando la barra lateral lo consume: la
+    etapa nueva se dibuja en esa misma pasada, sin un ``st.rerun()`` extra ni
+    un renderizado intermedio de la etapa vieja.
+    """
+    st.session_state["_goto"] = destino
+
+
+def _points_in_interval() -> int:
+    """Número de puntos marcados dentro del intervalo de procesamiento."""
+    ps, pe = st.session_state.proc_start, st.session_state.proc_end
+    return sum(1 for p in st.session_state.track.points if ps <= p.frame_idx <= pe)
+
+
+def _stage_status() -> dict:
+    """Qué pasos del flujo están completos, para el progreso de la barra lateral."""
+    n = _points_in_interval()
+    return {
+        "video": (st.session_state.reader is not None
+                  and st.session_state.proc_end > st.session_state.proc_start),
+        "calib": st.session_state.calibration is not None,
+        "track": n >= 2,
+        "n_puntos": n,
+    }
+
+
+def nav_button(label: str, destino: str, key: str,
+               tipo: str = "primary", ayuda: str = "") -> None:
+    """Botón de avance al siguiente paso del flujo."""
+    st.button(label, type=tipo, width="stretch", key=key, help=ayuda or None,
+              on_click=_set_goto, args=(destino,))
+
+
+def next_step(label: str, destino: str, key: str, listo: bool,
+              pendiente: str) -> None:
+    """Cierra una etapa: botón de avance si está lista, o qué falta si no.
+
+    No bloquea la navegación —el selector lateral sigue libre—, solo indica
+    cuál es el paso natural siguiente.
+    """
+    st.divider()
+    if listo:
+        nav_button(label, destino, key=key)
+    else:
+        st.info(pendiente, icon=":material/info:")
+        nav_button(label, destino, key=key, tipo="secondary",
+                   ayuda="Puedes avanzar igual, pero conviene completar esta etapa.")
+
+
 with st.sidebar:
     st.header("🎥 Tracker UAI")
     st.caption("Análisis de video para laboratorios de física")
@@ -403,13 +491,23 @@ with st.sidebar:
         st.error("⚠️ " + st.session_state["_load_error"])
 
     st.divider()
-    etapa = st.radio(
-        "Etapa",
-        ["1 · Video", "2 · Calibración", "3 · Tracking", "4 · Cinemática",
-         "5 · Ajuste", "6 · Exportar", "📊 Gráficos (datos manuales)",
-         "📐 Medición (foto)"],
-        index=0,
-    )
+
+    # Progreso del flujo: le dice al estudiante dónde está y qué le falta.
+    hechos = _stage_status()
+    if st.session_state.reader is not None:
+        st.caption("**Progreso**")
+        st.caption(
+            f"{'✅' if hechos['video'] else '⬜'} Tramo del video elegido\n\n"
+            f"{'✅' if hechos['calib'] else '⬜'} Calibración aplicada\n\n"
+            f"{'✅' if hechos['track'] else '⬜'} Objeto seguido "
+            f"({hechos['n_puntos']} puntos)"
+        )
+
+    # Sin format_func a propósito: las etiquetas del selector deben coincidir
+    # exactamente con los valores guardados en session_state["etapa"], que son
+    # los destinos que usan los botones "Continuar". El progreso se comunica en
+    # el checklist de arriba.
+    etapa = st.radio("Etapa", ETAPAS, key="etapa")
 
     st.divider()
     with st.expander("⚙️ Opciones avanzadas"):
@@ -1049,15 +1147,38 @@ meta = reader.metadata
 # --------------------------------------------------------------------------
 # Etapa 1 · Video
 # --------------------------------------------------------------------------
+def _interval_bar(ps: int, pe: int, n_frames: int) -> go.Figure:
+    """Barra que muestra qué parte del video quedó dentro del tramo elegido."""
+    fig = go.Figure()
+    fig.add_shape(type="rect", x0=0, x1=max(1, n_frames - 1), y0=0, y1=1,
+                  fillcolor="rgba(128,128,128,0.25)", line_width=0)
+    fig.add_shape(type="rect", x0=ps, x1=max(ps + 0.5, pe), y0=0, y1=1,
+                  fillcolor="#50b4ff", line_width=0)
+    fig.update_layout(height=76, margin=dict(l=10, r=10, t=6, b=28),
+                      showlegend=False)
+    fig.update_xaxes(range=[0, max(1, n_frames - 1)], title_text="frame")
+    fig.update_yaxes(visible=False, range=[0, 1])
+    return fig
+
+
 def stage_video() -> None:
-    st.warning(
-        "⚠️ Esta versión **no corrige perspectiva**. Los resultados son válidos "
-        "si la cámara está perpendicular al plano del movimiento y la calibración "
-        "está en ese mismo plano.",
-        icon="⚠️",
+    st.subheader("Paso 1 · Elegir el tramo del video que se va a analizar")
+    st.markdown(
+        "Un video suele traer segundos de más al principio y al final. Aquí "
+        "**recortas el tramo** que contiene el movimiento que te interesa: "
+        "todo lo que hagas después (seguimiento, gráficos, ajustes) usa "
+        "solamente ese tramo, y así el programa va mucho más rápido."
     )
-    for w in reader.warnings:
-        st.info("ℹ️ " + w)
+
+    with st.expander("⚠️ Antes de empezar: condiciones de validez", expanded=False):
+        st.warning(
+            "Esta versión **no corrige perspectiva**. Los resultados son válidos "
+            "si la cámara está perpendicular al plano del movimiento y la "
+            "calibración está en ese mismo plano.",
+            icon="⚠️",
+        )
+        for w in reader.warnings:
+            st.info("ℹ️ " + w)
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Frames", meta.n_frames)
@@ -1078,7 +1199,7 @@ def stage_video() -> None:
     with st.expander("▶️ Ver reproductor del video"):
         st.video(st.session_state.video_path)
 
-    st.subheader("Selección de frames")
+    st.subheader("a) Busca el frame donde empieza (y donde termina) el movimiento")
     idx = render_navigator(reader, "video")
     t = reader.frame_time(idx, fps_capture=st.session_state.fps_capture)
     table: TrackTable = st.session_state.track
@@ -1100,7 +1221,12 @@ def stage_video() -> None:
                    "contar y elegir el frame exacto de inicio y fin.")
 
     # Selección del intervalo de procesamiento.
-    st.subheader("Intervalo de procesamiento")
+    st.subheader("b) Fija el tramo con estos dos botones")
+    st.caption(
+        "Ubica el frame donde empieza el movimiento y pulsa **INICIO**; luego "
+        "ve al frame donde termina y pulsa **FINAL**. También puedes arrastrar "
+        "los extremos del deslizador."
+    )
     bcol1, bcol2 = st.columns(2)
     if bcol1.button("Usar frame actual como INICIO", width="stretch",
                     icon=":material/first_page:"):
@@ -1132,14 +1258,45 @@ def stage_video() -> None:
             "Intervalo modificado: se **borraron los puntos fuera del nuevo "
             "rango** y se invalidaron los resultados anteriores (cinemática, "
             "ajustes, gráficos exportados y vista de detecciones). Si detectaste "
-            "de forma automática, vuelve a ejecutar el seguimiento en la Etapa 3.",
+            "de forma automática, vuelve a ejecutar el seguimiento en el Paso 3.",
             icon=":material/sync:",
         )
     t0 = reader.frame_time(ps, fps_capture=st.session_state.fps_capture)
     t1 = reader.frame_time(pe, fps_capture=st.session_state.fps_capture)
-    st.success(
-        f"Intervalo: frame {ps} → {pe}  ({pe - ps + 1} frames)  ·  "
-        f"t = {t0:.3f} s → {t1:.3f} s"
+
+    # Confirmación visual: qué se seleccionó y qué se va a usar.
+    st.subheader("c) Esto es lo que se analizará")
+    porcentaje = (pe - ps + 1) / max(1, meta.n_frames) * 100
+    st.plotly_chart(_interval_bar(ps, pe, meta.n_frames), width="stretch")
+
+    m1, m2 = st.columns(2)
+    try:
+        with m1:
+            st.image(fit_display(reader.get_frame(ps)),
+                     caption=f"▶️ INICIO — frame {ps} · t = {t0:.3f} s")
+        with m2:
+            st.image(fit_display(reader.get_frame(pe)),
+                     caption=f"⏹️ FINAL — frame {pe} · t = {t1:.3f} s")
+    except Exception as e:
+        st.caption(f"No se pudieron mostrar las miniaturas: {e}")
+
+    if pe <= ps:
+        st.error(
+            "El frame final debe ser posterior al inicial. Ajusta el tramo "
+            "antes de continuar."
+        )
+    else:
+        st.success(
+            f"Tramo seleccionado: **frames {ps} → {pe}** "
+            f"({pe - ps + 1} frames, {porcentaje:.0f} % del video) · "
+            f"duración **{t1 - t0:.3f} s**"
+        )
+
+    next_step(
+        "Continuar → Paso 2 · Calibración", "2 · Calibración", "nav_video",
+        listo=pe > ps,
+        pendiente="Define un tramo válido (el frame final debe ser mayor que "
+                  "el inicial) antes de continuar.",
     )
 
 
@@ -1147,19 +1304,21 @@ def stage_video() -> None:
 # Etapa 2 · Calibración
 # --------------------------------------------------------------------------
 def stage_calibration() -> None:
-    st.subheader("Calibración espacial")
+    st.subheader("Paso 2 · Calibrar: enseñarle al programa cuánto mide un píxel")
     _ensure_full_preload()
     st.markdown(
-        "Marca en el video: **dos puntos** de una distancia conocida (para la "
-        "escala) y el **origen** de coordenadas. El eje Y físico apunta hacia "
+        "El video está en píxeles, pero tu informe necesita **metros**. Para "
+        "traducir, marca sobre la imagen algo cuyo tamaño real conozcas (una "
+        "regla, una huincha, una hoja) y escribe cuánto mide. También marcas "
+        "dónde está el **origen** de coordenadas. El eje Y apunta hacia "
         "**arriba**."
     )
 
     # 1) Elegir frame donde se vea bien la regla de calibración.
-    with st.expander("📍 Elegir frame de calibración", expanded=False):
+    with st.expander("📍 ¿La regla se ve mejor en otro frame? Cámbialo aquí"):
         st.caption(
-            "Navega hasta un frame donde la regla/objeto de distancia conocida "
-            "se vea claramente."
+            "Navega hasta un frame donde la regla u objeto de distancia conocida "
+            "se vea claramente. La calibración se marca sobre ese frame."
         )
         render_navigator(reader, "calib")
 
@@ -1168,10 +1327,11 @@ def stage_calibration() -> None:
 
     # Ejes rotados (orientación libre del sistema de referencia).
     st.session_state.calib_use_rotation = st.checkbox(
-        "Ejes con orientación libre (marcar dirección +X)",
+        "Mi eje X no es horizontal (plano inclinado): quiero marcar la dirección +X",
         value=st.session_state.calib_use_rotation,
-        help="Actívalo si el eje X no es horizontal (p. ej. plano inclinado). "
-        "Marca un punto en la dirección deseada para +X desde el origen.",
+        help="Actívalo solo si el movimiento ocurre sobre un plano inclinado o "
+        "un eje girado. Marcarás un punto que indique hacia dónde apunta +X "
+        "desde el origen.",
     )
 
     # 2) ¿Qué se marca con el próximo clic?
@@ -1180,8 +1340,38 @@ def stage_calibration() -> None:
         opciones.append("Dirección +X")
     if st.session_state.calib_target not in opciones:
         st.session_state.calib_target = opciones[0]
+
+    # Lista de pasos con su estado, para que se vea qué falta.
+    estados = {
+        "Punto 1 (escala)": st.session_state.calib_p1,
+        "Punto 2 (escala)": st.session_state.calib_p2,
+        "Origen": st.session_state.calib_origin,
+        "Dirección +X": st.session_state.calib_xdir,
+    }
+    checklist = []
+    for i, op in enumerate(opciones, start=1):
+        marca = "✅" if estados[op] is not None else "⬜"
+        actual = " ← **estás aquí**" if op == st.session_state.calib_target else ""
+        checklist.append(f"{marca} **{i}.** {op}{actual}")
+    st.markdown("  \n".join(checklist))
+
+    INSTRUCCIONES = {
+        "Punto 1 (escala)":
+            "Haz clic en **un extremo** de la regla (o del objeto de tamaño "
+            "conocido).",
+        "Punto 2 (escala)":
+            "Ahora haz clic en **el otro extremo** de esa misma regla.",
+        "Origen":
+            "Haz clic donde quieras poner el **origen (0, 0)**. Suele ser el "
+            "punto de partida del movimiento.",
+        "Dirección +X":
+            "Haz clic en un punto que quede **en la dirección +X** desde el "
+            "origen (por ejemplo, riel abajo en un plano inclinado).",
+    }
+    st.info(INSTRUCCIONES[st.session_state.calib_target], icon=":material/ads_click:")
+
     st.session_state.calib_target = st.radio(
-        "¿Qué vas a marcar con el próximo clic?",
+        "¿Quieres re-marcar otro punto? Elígelo aquí",
         opciones,
         horizontal=True,
         index=opciones.index(st.session_state.calib_target),
@@ -1236,18 +1426,31 @@ def stage_calibration() -> None:
         if st.session_state.calib_use_rotation:
             st.write(f"🟠 Dirección +X: {_fmt_pt(st.session_state.calib_xdir)}")
 
-        st.session_state.calib_real_dist = st.number_input(
-            "Distancia real entre punto 1 y 2 (m)",
-            min_value=0.0001,
-            value=float(st.session_state.calib_real_dist),
-            step=0.01,
-            format="%.4f",
+        st.markdown("**¿Cuánto mide de verdad?**")
+        # Unidad explícita: pedir siempre metros invitaba a escribir "30" por
+        # una regla de 30 cm, un error de factor 100 que nada detectaba.
+        unidades = {"cm": 0.01, "mm": 0.001, "m": 1.0}
+        st.session_state.calib_dist_unit = st.radio(
+            "Unidad", list(unidades), horizontal=True,
+            index=list(unidades).index(st.session_state.calib_dist_unit),
+            label_visibility="collapsed",
         )
+        factor = unidades[st.session_state.calib_dist_unit]
+        valor_mostrado = float(st.session_state.calib_real_dist) / factor
+        nuevo = st.number_input(
+            f"Distancia entre el punto 1 y el punto 2 "
+            f"({st.session_state.calib_dist_unit})",
+            min_value=0.0001,
+            value=float(valor_mostrado),
+            step=1.0 if factor < 1 else 0.01,
+            format="%.4g",
+            help="Mide con una regla el objeto que acabas de marcar y escribe "
+            "aquí ese número, en la unidad que elijas arriba.",
+        )
+        st.session_state.calib_real_dist = float(nuevo) * factor
+        st.caption(f"= {st.session_state.calib_real_dist:.4g} m")
 
-        cbtn1, cbtn2 = st.columns(2)
-        if cbtn1.button("✅ Aplicar calibración", width="stretch"):
-            _apply_calibration()
-        if cbtn2.button("🔄 Reiniciar", width="stretch"):
+        if st.button("🔄 Empezar la calibración de nuevo", width="stretch"):
             st.session_state.calib_p1 = None
             st.session_state.calib_p2 = None
             st.session_state.calib_origin = None
@@ -1256,21 +1459,46 @@ def stage_calibration() -> None:
             st.session_state.calib_target = "Punto 1 (escala)"
             st.rerun()
 
-    # 4) Estado de la calibración.
+    # 4) Calibración automática: apenas están todos los datos, se aplica sola.
+    #    Antes había que acordarse de pulsar "Aplicar", y olvidarlo dejaba las
+    #    columnas en metros vacías sin que quedara claro por qué.
+    faltan = _calib_faltantes()
+    if not faltan:
+        _apply_calibration(silencioso=True, recargar=False)
+
     calib = st.session_state.calibration
     if calib is not None:
-        st.success(f"Calibración aplicada — {calib.summary()}")
-        # Ejemplo de conversión: esquina donde está el puntero no; mostramos el origen.
+        st.success(f"✅ Calibración lista — {calib.summary()}")
+        mm_por_px = calib.m_per_px * 1000.0
+        ancho_real = calib.m_per_px * meta.width
+        v1, v2 = st.columns(2)
+        v1.metric("1 píxel equivale a", f"{mm_por_px:.4g} mm")
+        v2.metric("Ancho real del encuadre", f"{ancho_real:.4g} m")
         st.caption(
-            "Verificación: la distancia entre los dos puntos marcados equivale "
-            f"a {st.session_state.calib_real_dist:.4g} m."
+            "**Verifica que esto tenga sentido.** Si el ancho del encuadre no "
+            "se parece a lo que se ve en el video, revisa la distancia que "
+            "escribiste y su unidad: es el error más frecuente de esta etapa."
         )
+        if not 0.05 <= ancho_real <= 100.0:
+            st.warning(
+                f"El programa cree que el video abarca **{ancho_real:.4g} m** "
+                "de ancho, lo que no parece razonable para un laboratorio. "
+                "Casi siempre significa que la distancia conocida está en la "
+                "unidad equivocada, o que los dos puntos de la escala quedaron "
+                "muy juntos.",
+                icon="⚠️",
+            )
     else:
-        st.info(
-            "Marca los 3 elementos y pulsa **Aplicar calibración**. "
-            "Puedes re-marcar cualquier punto seleccionándolo arriba y "
-            "haciendo clic de nuevo."
-        )
+        st.info("Falta marcar: " + ", ".join(faltan) +
+                ". La calibración se aplica sola cuando estén todos.")
+
+    next_step(
+        "Continuar → Paso 3 · Seguir el objeto", "3 · Tracking", "nav_calib",
+        listo=calib is not None,
+        pendiente="Completa la calibración para que los resultados salgan en "
+                  "metros. Puedes seguir el objeto sin calibrar, pero las "
+                  "columnas x, y en metros quedarán vacías.",
+    )
 
 
 def _fmt_pt(pt: Optional[Tuple[float, float]]) -> str:
@@ -1280,35 +1508,52 @@ def _fmt_pt(pt: Optional[Tuple[float, float]]) -> str:
     return f"({pt[0]:.0f}, {pt[1]:.0f}) px"
 
 
-def _apply_calibration() -> None:
-    """Valida los puntos y construye el objeto ``Calibration`` en la sesión."""
+def _calib_faltantes() -> list:
+    """Qué elementos de la calibración siguen sin marcar."""
+    faltan = []
+    if st.session_state.calib_p1 is None:
+        faltan.append("el punto 1 de la escala")
+    if st.session_state.calib_p2 is None:
+        faltan.append("el punto 2 de la escala")
+    if st.session_state.calib_origin is None:
+        faltan.append("el origen")
+    if st.session_state.calib_use_rotation and st.session_state.calib_xdir is None:
+        faltan.append("la dirección +X")
+    return faltan
+
+
+def _apply_calibration(silencioso: bool = False, recargar: bool = True) -> bool:
+    """Construye el objeto ``Calibration`` en la sesión. Devuelve si lo logró.
+
+    Con ``silencioso=True`` no escribe errores en pantalla: se usa para el
+    recálculo automático, que corre en cada pasada apenas están los datos
+    completos y no debe gritar mientras el estudiante todavía va marcando.
+    """
     p1 = st.session_state.calib_p1
     p2 = st.session_state.calib_p2
     org = st.session_state.calib_origin
-    if p1 is None or p2 is None:
-        st.error("Faltan los dos puntos de la escala.")
-        return
-    if org is None:
-        st.error("Falta marcar el origen.")
-        return
+    faltan = _calib_faltantes()
+    if faltan:
+        if not silencioso:
+            st.error("Falta marcar: " + ", ".join(faltan) + ".")
+        return False
     try:
         m_per_px = scale_from_two_points(
             p1, p2, float(st.session_state.calib_real_dist)
         )
     except ValueError as e:
-        st.error(str(e))
-        return
+        if not silencioso:
+            st.error(str(e))
+        return False
     angle = 0.0
     if st.session_state.calib_use_rotation:
-        xdir = st.session_state.calib_xdir
-        if xdir is None:
-            st.error("Marca el punto de dirección +X o desactiva los ejes rotados.")
-            return
-        angle = angle_from_points(org, xdir)
+        angle = angle_from_points(org, st.session_state.calib_xdir)
     st.session_state.calibration = Calibration(
         m_per_px=m_per_px, origin_px=org, angle_rad=angle
     )
-    st.rerun()
+    if recargar:
+        st.rerun()
+    return True
 
 
 # --------------------------------------------------------------------------
@@ -1327,20 +1572,32 @@ def box_to_original(value: dict, orig_width: int):
 
 
 def stage_tracking() -> None:
-    st.subheader("Tracking")
+    st.subheader("Paso 3 · Seguir el objeto a lo largo del video")
+    st.markdown(
+        "Aquí el programa registra **dónde está el objeto en cada frame**. Con "
+        "el modo automático basta con señalarlo una vez: el programa lo busca "
+        "solo en el resto del tramo."
+    )
 
     calib = st.session_state.calibration
     if calib is None:
         st.warning(
             "Aún no aplicaste la calibración. Puedes marcar puntos igual, pero "
-            "las columnas x_m, y_m quedarán vacías hasta calibrar (Etapa 2)."
+            "las columnas x, y en metros quedarán vacías hasta calibrar "
+            "(Paso 2).",
+            icon="⚠️",
         )
 
+    modos = ["Automático", "Manual"]
     st.session_state.track_mode = st.radio(
-        "Modo de tracking",
-        ["Manual", "Automático"],
+        "Modo de seguimiento",
+        modos,
         horizontal=True,
-        index=["Manual", "Automático"].index(st.session_state.track_mode),
+        index=modos.index(st.session_state.track_mode)
+        if st.session_state.track_mode in modos else 0,
+        help="Automático: señalas el objeto una vez y el programa lo sigue. "
+        "Manual: haces clic sobre el objeto en cada frame (útil si el "
+        "automático se pierde o el objeto se confunde con el fondo).",
     )
 
     if st.session_state.track_mode == "Manual":
@@ -1349,6 +1606,14 @@ def stage_tracking() -> None:
         _tracking_auto()
 
     _render_track_table(calib)
+
+    n_int = _points_in_interval()
+    next_step(
+        "Continuar → Paso 4 · Cinemática", "4 · Cinemática", "nav_track",
+        listo=n_int >= 2,
+        pendiente="Necesitas al menos 2 puntos dentro del tramo para calcular "
+                  "velocidades. Ejecuta el seguimiento o marca puntos a mano.",
+    )
 
 
 def _ensure_full_preload() -> None:
@@ -1451,6 +1716,9 @@ def _tracking_manual() -> None:
 
 def _tracking_auto() -> None:
     """Seguimiento automático por plantilla, color o CSRT."""
+    flash = st.session_state.pop("_track_flash", None)
+    if flash:
+        st.success(flash, icon=":material/check_circle:")
     metodos = ["Plantilla", "Color"]
     if csrt_available():
         metodos.append("CSRT")
@@ -1458,8 +1726,8 @@ def _tracking_auto() -> None:
         st.caption("💡 CSRT no disponible (instala opencv-contrib-python para habilitarlo).")
     metodo = st.selectbox("Método", metodos)
 
-    # Rango de frames y paso (por defecto, el intervalo elegido en Etapa 1).
-    st.caption("Rango inicializado con el **intervalo de procesamiento** (Etapa 1).")
+    # Rango de frames y paso (por defecto, el tramo elegido en el Paso 1).
+    st.caption("El rango viene del **tramo que elegiste en el Paso 1**. Normalmente no hay que tocarlo.")
     c1, c2, c3 = st.columns(3)
     start = c1.number_input("Frame inicial", 0, meta.n_frames - 1,
                             int(st.session_state.proc_start))
@@ -1476,29 +1744,84 @@ def _tracking_auto() -> None:
     table: TrackTable = st.session_state.track
 
     if metodo in ("Plantilla", "CSRT"):
-        st.markdown("**Arrastra un recuadro** sobre el objeto en el frame inicial.")
+        st.markdown("#### Señala el objeto que quieres seguir")
+        st.info(
+            "**Haz clic justo encima del objeto.** Aparecerá un recuadro verde "
+            "que puedes agrandar o achicar con el deslizador. Si prefieres, "
+            "también puedes arrastrar para dibujar el recuadro a mano.",
+            icon=":material/ads_click:",
+        )
+
+        if st.session_state.auto_box_size is None:
+            st.session_state.auto_box_size = default_box_size(meta.width)
+        lado_max = int(max(24, min(meta.width, meta.height)))
+        st.session_state.auto_box_size = st.slider(
+            "Tamaño del recuadro (px)",
+            min_value=12,
+            max_value=lado_max,
+            value=int(min(st.session_state.auto_box_size, lado_max)),
+            help="El recuadro debe encerrar el objeto y lo menos posible de "
+            "fondo. Si el objeto cambia de tamaño o gira mucho, prueba con uno "
+            "un poco más grande.",
+        )
+
         disp_frame = frame.copy()
         roi_prev = st.session_state.auto_roi
         if roi_prev:
             rx, ry, rw, rh = (int(v) for v in roi_prev)
+            grosor = max(2, meta.width // 400)
             cv2.rectangle(disp_frame, (rx, ry), (rx + rw, ry + rh),
-                          (0, 220, 0), max(2, meta.width // 400))
+                          (0, 220, 0), grosor)
+            cv2.drawMarker(disp_frame, (int(rx + rw / 2), int(ry + rh / 2)),
+                           (0, 220, 0), cv2.MARKER_CROSS, max(8, rw // 3), grosor)
         value = streamlit_image_coordinates(
-            disp_frame, width=disp_w, key="auto_box_clicker",
+            fit_display(disp_frame), width=disp_w, key="auto_box_clicker",
             cursor="crosshair", click_and_drag=True,
         )
         if value is not None and value != st.session_state._auto_last_click:
             st.session_state._auto_last_click = value
             roi = box_to_original(value, meta.width)
-            if roi and roi[2] > 3 and roi[3] > 3:
+            if roi and roi[2] >= MIN_ARRASTRE_PX and roi[3] >= MIN_ARRASTRE_PX:
+                # Arrastre: se respeta el recuadro dibujado y su tamaño manda.
                 st.session_state.auto_roi = roi
+                st.session_state.auto_box_size = int(round(max(roi[2], roi[3])))
                 st.rerun()
+            else:
+                # Clic simple: recuadro centrado en el clic. Antes esto se
+                # descartaba en silencio y el estudiante no veía nada.
+                # En modo arrastre el componente entrega x1/y1 aunque no se
+                # arrastre, así que un clic llega como recuadro de área nula.
+                if roi is not None:
+                    pt = (roi[0], roi[1])
+                else:
+                    pt = click_to_original(value, meta.width)
+                if pt is not None:
+                    st.session_state.auto_roi = box_from_click(
+                        pt[0], pt[1], st.session_state.auto_box_size,
+                        meta.width, meta.height,
+                    )
+                    st.rerun()
+
         roi = st.session_state.auto_roi
         if roi:
-            st.success(f"Recuadro: x={roi[0]:.0f}, y={roi[1]:.0f}, "
-                       f"w={roi[2]:.0f}, h={roi[3]:.0f} px")
+            rx, ry, rw, rh = (int(v) for v in roi)
+            recorte = frame[max(0, ry):ry + rh, max(0, rx):rx + rw]
+            zc1, zc2 = st.columns([1, 2])
+            with zc1:
+                if recorte.size > 0:
+                    zoom = cv2.resize(recorte, (160, 160),
+                                      interpolation=cv2.INTER_NEAREST)
+                    st.image(zoom, caption="Esto es lo que se seguirá")
+            with zc2:
+                st.success(
+                    f"Objeto seleccionado: recuadro de **{rw}×{rh} px** "
+                    f"centrado en ({rx + rw // 2}, {ry + rh // 2}).\n\n"
+                    "¿Se ve el objeto completo y con poco fondo alrededor? "
+                    "Si no, vuelve a hacer clic o ajusta el tamaño."
+                )
         else:
-            st.info("Aún no defines el recuadro del objeto.")
+            st.info("Aún no has señalado el objeto: haz clic sobre él en la "
+                    "imagen de arriba.")
 
         if st.button("▶️ Ejecutar seguimiento", type="primary",
                      disabled=roi is None, width="stretch"):
@@ -1537,32 +1860,51 @@ def _tracking_auto() -> None:
     table = st.session_state.track
     if len(table) > 0:
         st.divider()
-        st.subheader("Revisión de detecciones")
-        st.caption(
-            "Revisa la calidad del seguimiento antes de seguir. La imagen "
-            "muestra todas las detecciones superpuestas; abajo puedes navegar "
-            "frame por frame y corregir puntos mal detectados."
-        )
-        # El overlay "fantasma" es caro (mediana de frames): se cachea y solo
-        # se regenera con un botón, para que navegar al corregir sea fluido.
-        if st.button("🔄 Actualizar vista superpuesta", key="refresh_ghost"):
-            st.session_state.pop("_ghost_overlay", None)
-        if "_ghost_overlay" not in st.session_state:
-            frames = [int(f) for f in sorted(p.frame_idx for p in table.points)]
-            try:
-                with st.spinner("Generando vista de detecciones…"):
-                    st.session_state["_ghost_overlay"] = reader.ghost_overlay(frames)
-            except Exception as e:
-                st.session_state["_ghost_overlay"] = None
-                st.caption(f"No se pudo generar la vista superpuesta: {e}")
-        ghost = st.session_state.get("_ghost_overlay")
-        if ghost is not None:
-            st.image(annotate_track(ghost, table, -1), width=DISPLAY_WIDTH,
-                     caption="Todas las detecciones superpuestas (cian). "
-                     "Usa 'Actualizar' tras corregir.")
+        st.subheader("Revisión (opcional)")
 
-        st.markdown("**Corrección frame por frame**")
-        _correction_ui("review", advance=False)
+        # Aviso de huecos: es barato y detecta el fallo típico del seguimiento
+        # automático (perder el objeto en un tramo) sin generar nada pesado.
+        huecos = frame_gaps(
+            [p.frame_idx for p in table.points],
+            int(st.session_state.proc_start), int(st.session_state.proc_end),
+            int(st.session_state.track_step),
+        )
+        if huecos:
+            st.warning(
+                f"Hay **{len(huecos)} frames sin detección** dentro del tramo "
+                f"(el primero es el {huecos[0]}). Suele significar que el "
+                "seguimiento perdió el objeto. Puedes corregirlos a mano abajo "
+                "o repetir el seguimiento con otro recuadro.",
+                icon="⚠️",
+            )
+        else:
+            st.success("Todos los frames del tramo tienen su punto detectado.")
+
+        # El overlay "fantasma" calcula una mediana sobre todos los frames y es
+        # caro: ya no se genera solo, para no hacer esperar a quien solo quiere
+        # seguir adelante.
+        with st.expander("👻 Ver todas las detecciones superpuestas en una imagen"):
+            st.caption(
+                "Vista de control: muestra el recorrido completo en una sola "
+                "imagen. Tarda unos segundos en generarse."
+            )
+            if st.button("Generar vista superpuesta", key="refresh_ghost"):
+                st.session_state.pop("_ghost_overlay", None)
+                frames = [int(f) for f in sorted(p.frame_idx for p in table.points)]
+                try:
+                    with st.spinner("Generando vista de detecciones…"):
+                        st.session_state["_ghost_overlay"] = reader.ghost_overlay(frames)
+                except Exception as e:
+                    st.session_state["_ghost_overlay"] = None
+                    st.caption(f"No se pudo generar la vista superpuesta: {e}")
+            ghost = st.session_state.get("_ghost_overlay")
+            if ghost is not None:
+                st.image(annotate_track(ghost, table, -1), width=DISPLAY_WIDTH,
+                         caption="Todas las detecciones superpuestas (cian). "
+                         "Vuelve a generarla después de corregir puntos.")
+
+        with st.expander("✏️ Corregir puntos frame por frame"):
+            _correction_ui("review", advance=False)
 
 
 def _run_autotrack(metodo: str, start: int, end: int, step: int) -> None:
@@ -1613,7 +1955,9 @@ def _run_autotrack(metodo: str, start: int, end: int, step: int) -> None:
     if not pts:
         st.warning("No se detectó el objeto en ningún frame. Ajusta los parámetros.")
     else:
-        st.success(f"Seguimiento completo: {len(pts)} puntos agregados.")
+        st.session_state["_track_flash"] = (
+            f"Seguimiento completo: se detectaron **{len(pts)} puntos**."
+        )
         st.rerun()
 
 
@@ -1690,53 +2034,118 @@ def _line_fig(x, series: list[tuple], title: str, xlab: str, ylab: str) -> go.Fi
 
 
 def stage_kinematics() -> None:
-    st.subheader("Cinemática")
+    st.subheader("Paso 4 · Cinemática: qué dicen los datos del movimiento")
 
     calib = st.session_state.calibration
     if calib is None:
-        st.warning("Necesitas aplicar la calibración (Etapa 2) para calcular en metros.")
+        st.warning("Necesitas aplicar la calibración (Paso 2) para calcular en "
+                   "metros.")
+        nav_button("Ir al Paso 2 · Calibración", "2 · Calibración",
+                   key="nav_kin_calib")
         return
     n_int = _points_in_interval()
     if n_int < 2:
         st.info(
-            "Marca al menos 2 puntos **dentro del intervalo de procesamiento** "
-            "(Etapa 3) para calcular velocidad."
+            "Marca al menos 2 puntos **dentro del tramo elegido** (Paso 3) "
+            "para calcular velocidad."
         )
+        nav_button("Ir al Paso 3 · Seguir el objeto", "3 · Tracking",
+                   key="nav_kin_track")
         return
 
-    # Controles de suavizado.
-    c1, c2, c3 = st.columns([1.4, 1, 1])
-    st.session_state.kin_smooth = c1.checkbox(
-        "Suavizar posición (Savitzky-Golay)",
-        value=st.session_state.kin_smooth,
-        help="Reduce el ruido de marcado, sobre todo en la aceleración.",
-    )
-    st.session_state.kin_window = c2.number_input(
-        "Ventana (impar)",
-        min_value=3,
-        max_value=max(3, n_int),
-        value=int(st.session_state.kin_window),
-        step=2,
-        disabled=not st.session_state.kin_smooth,
-    )
-    st.session_state.kin_poly = c3.selectbox(
-        "Orden polinomio",
-        options=[2, 3],
-        index=[2, 3].index(int(st.session_state.kin_poly)),
-        disabled=not st.session_state.kin_smooth,
-    )
-
-    st.caption(
-        f"Analizando **{n_int} puntos** dentro del intervalo "
-        f"[{st.session_state.proc_start}, {st.session_state.proc_end}]."
-    )
     kdf = _get_kdf()
     # Guarda el resultado para reutilizarlo en export/ajuste.
     st.session_state.kin_df = kdf
+    resumen = motion_summary(kdf)
 
+    # --- Resumen numérico: lo primero que el estudiante debería mirar --------
+    st.markdown("#### Resumen del movimiento")
+    r1, r2, r3, r4 = st.columns(4)
+    r1.metric("Puntos analizados", resumen["n_puntos"])
+    r2.metric("Duración", f"{resumen['duracion']:.3f} s")
+    r3.metric("Distancia recorrida", f"{resumen['recorrido']:.4g} m")
+    r4.metric("Desplazamiento neto", f"{resumen['desplazamiento']:.4g} m")
+    r5, r6, r7, r8 = st.columns(4)
+    r5.metric("Rapidez media", f"{resumen['rapidez_media']:.4g} m/s")
+    r6.metric("Rapidez máxima", f"{resumen['rapidez_maxima']:.4g} m/s")
+    r7.metric("|Aceleración| media", f"{resumen['aceleracion_media']:.4g} m/s²")
+    r8.metric("Intervalo entre puntos",
+              f"{resumen['dt_medio'] * 1000:.1f} ms"
+              if np.isfinite(resumen["dt_medio"]) else "—")
+
+    if np.isfinite(resumen["fps_efectivo"]):
+        st.caption(
+            f"Los puntos están separados **{resumen['dt_medio'] * 1000:.1f} ms** "
+            f"en promedio, es decir {resumen['fps_efectivo']:.1f} mediciones por "
+            "segundo."
+        )
+
+    # --- Calidad de los datos ------------------------------------------------
+    avisos = []
+    if np.isfinite(resumen["ruido_rms"]) and resumen["recorrido"] > 0:
+        ruido_rel = resumen["ruido_rms"] / resumen["recorrido"] * 100
+        avisos.append(
+            f"Ruido de marcado ≈ **{resumen['ruido_rms'] * 1000:.2g} mm** "
+            f"({ruido_rel:.1f} % del recorrido)."
+        )
+        if ruido_rel > 5:
+            avisos.append(
+                "Es alto: la aceleración va a salir muy ruidosa. Activa el "
+                "suavizado más abajo, o repite el seguimiento."
+            )
+    huecos = frame_gaps(
+        [p.frame_idx for p in st.session_state.track.points],
+        int(st.session_state.proc_start), int(st.session_state.proc_end),
+        int(st.session_state.track_step),
+    )
+    if huecos:
+        avisos.append(
+            f"Faltan **{len(huecos)} frames** sin punto dentro del tramo; "
+            "vuelve al Paso 3 si quieres completarlos."
+        )
+    if resumen["n_puntos"] < 10:
+        avisos.append(
+            f"Solo hay **{resumen['n_puntos']} puntos**: pocos para un ajuste "
+            "confiable. Conviene seguir el objeto en más frames."
+        )
+    if avisos:
+        with st.expander("🔍 Calidad de los datos", expanded=bool(huecos)):
+            for a in avisos:
+                st.markdown("- " + a)
+
+    # --- Controles de suavizado ---------------------------------------------
+    with st.expander("⚙️ Suavizado (reduce el ruido antes de derivar)"):
+        c1, c2, c3 = st.columns([1.4, 1, 1])
+        st.session_state.kin_smooth = c1.checkbox(
+            "Suavizar posición (Savitzky-Golay)",
+            value=st.session_state.kin_smooth,
+            help="Reduce el ruido de marcado, sobre todo en la aceleración. "
+            "Los gráficos y las figuras exportadas usan la señal suavizada.",
+        )
+        st.session_state.kin_window = c2.number_input(
+            "Ventana (impar)",
+            min_value=3,
+            max_value=max(3, n_int),
+            value=int(st.session_state.kin_window),
+            step=2,
+            disabled=not st.session_state.kin_smooth,
+        )
+        st.session_state.kin_poly = c3.selectbox(
+            "Orden polinomio",
+            options=[2, 3],
+            index=[2, 3].index(int(st.session_state.kin_poly)),
+            disabled=not st.session_state.kin_smooth,
+        )
+
+    cx, cy, suavizado = position_columns(kdf)
+    if suavizado:
+        st.caption("📉 Mostrando la posición **suavizada**. Las figuras que "
+                   "exportes usarán esta misma señal.")
+
+    st.markdown("#### Gráficos")
     t = kdf["t"].to_numpy()
-    xpos = kdf["x_s"].to_numpy() if "x_s" in kdf else kdf["x_m"].to_numpy()
-    ypos = kdf["y_s"].to_numpy() if "y_s" in kdf else kdf["y_m"].to_numpy()
+    xpos = kdf[cx].to_numpy()
+    ypos = kdf[cy].to_numpy()
 
     g1, g2 = st.columns(2)
     with g1:
@@ -1772,12 +2181,17 @@ def stage_kinematics() -> None:
             width="stretch",
         )
 
-    with st.expander("📊 Tabla con derivados"):
+    with st.expander("📊 Tabla con todos los datos derivados"):
         st.dataframe(kdf, width="stretch")
 
     st.caption(
         "Las derivadas usan diferencias finitas centradas (respetan el paso de "
         "tiempo no uniforme). Los extremos son menos precisos por ser de un solo lado."
+    )
+
+    next_step(
+        "Continuar → Paso 5 · Ajuste de modelos", "5 · Ajuste", "nav_kin",
+        listo=True, pendiente="",
     )
 
 
@@ -1848,12 +2262,6 @@ def _get_kdf():
     )
 
 
-def _points_in_interval() -> int:
-    """Número de puntos marcados dentro del intervalo de procesamiento."""
-    ps, pe = st.session_state.proc_start, st.session_state.proc_end
-    return sum(1 for p in st.session_state.track.points if ps <= p.frame_idx <= pe)
-
-
 def _signal_picker(kdf, default: str, key: str):
     """Selector de señal; devuelve (etiqueta, arreglo)."""
     labels = list(SIGNAL_LABELS.keys())
@@ -1867,13 +2275,13 @@ def _signal_picker(kdf, default: str, key: str):
 
 
 def stage_ajuste() -> None:
-    st.subheader("Ajuste de modelos")
+    st.subheader("Paso 5 · Ajuste de modelos")
 
     calib = st.session_state.calibration
     table: TrackTable = st.session_state.track
     if calib is None or _points_in_interval() < 2:
-        st.info("Necesitas calibración (Etapa 2) y al menos 2 puntos dentro del "
-                "intervalo (Etapa 3).")
+        st.info("Necesitas calibración (Paso 2) y al menos 2 puntos dentro del "
+                "tramo (Paso 3).")
         return
 
     labels = preset_labels()
@@ -2307,6 +2715,12 @@ def stage_ajuste() -> None:
             st.error(f"No se pudo ajustar: {e}")
 
 
+    next_step(
+        "Continuar → Paso 6 · Exportar para el informe", "6 · Exportar",
+        "nav_ajuste", listo=True, pendiente="",
+    )
+
+
 def _run_generic_fit(t, y, model: str, sig_label: str) -> None:
     """Ejecuta y muestra un ajuste genérico."""
     try:
@@ -2327,69 +2741,102 @@ def _run_generic_fit(t, y, model: str, sig_label: str) -> None:
 # Etapa 6 · Exportar
 # --------------------------------------------------------------------------
 def stage_export() -> None:
-    st.subheader("Exportar resultados")
+    st.subheader("Paso 6 · Llevarte los resultados al informe")
 
     calib = st.session_state.calibration
     if calib is None or _points_in_interval() < 2:
-        st.info("Necesitas calibración (Etapa 2) y al menos 2 puntos dentro del "
-                "intervalo (Etapa 3).")
+        st.info("Necesitas calibración (Paso 2) y al menos 2 puntos dentro del "
+                "tramo (Paso 3).")
         return
 
     kdf = _get_kdf()
     n = len(kdf)
+    _, _, suavizado = position_columns(kdf)
 
-    st.markdown("**1) Elige qué exportar**")
-    inc_csv = st.checkbox("Datos completos (CSV: crudos + derivados)", value=True)
+    st.markdown(
+        "Aquí tienes **las figuras listas para pegar en tu informe** y la tabla "
+        "de datos. Puedes descargar cada figura por separado, o todo junto en "
+        "un ZIP."
+    )
+    if suavizado:
+        st.caption("Las figuras usan la posición **suavizada**, igual que los "
+                   "gráficos del Paso 4.")
 
-    st.caption("Figuras (PNG):")
-    selected = {}
-    cols = st.columns(2)
-    for i, label in enumerate(export_mod.FIGURES.keys()):
+    # --- Figuras: se generan y se muestran, no hay que adivinar qué salen ----
+    st.markdown("#### Figuras")
+    disponibles = {}
+    for label, (fn, fname) in export_mod.FIGURES.items():
         # Aceleración y error requieren ≥3 puntos para ser útiles.
-        need3 = label in ("Aceleración vs tiempo", "Error de detección")
-        disabled = need3 and n < 3
-        selected[label] = cols[i % 2].checkbox(
-            label, value=not disabled, disabled=disabled,
-            help="Requiere al menos 3 puntos." if disabled else None,
-        )
+        if label in ("Aceleración vs tiempo", "Error de detección") and n < 3:
+            continue
+        disponibles[label] = (fn, fname)
 
-    st.markdown("**2) Genera y descarga**")
-    if st.button("⚙️ Generar archivos", type="primary"):
+    # Firma del estado que determina las figuras. Se recalculan solo cuando
+    # cambia algo real (puntos, tramo, suavizado, escala), no en cada pasada:
+    # generar cinco PNG con matplotlib en cada interacción sería inaceptable.
+    puntos = st.session_state.track.points
+    firma = (
+        len(puntos),
+        round(sum(p.x_px + p.y_px for p in puntos), 3),
+        int(st.session_state.proc_start), int(st.session_state.proc_end),
+        bool(st.session_state.kin_smooth), int(st.session_state.kin_window),
+        int(st.session_state.kin_poly),
+        round(calib.m_per_px, 12), round(calib.angle_rad, 9),
+        tuple(disponibles),
+    )
+    if st.session_state.get("_export_firma") != firma:
         pngs = {}
         try:
             with st.spinner("Generando figuras…"):
-                for label, chosen in selected.items():
-                    if chosen:
-                        fn, fname = export_mod.FIGURES[label]
-                        pngs[fname] = fn(kdf)
-            csv_bytes = export_mod.dataframe_to_csv_bytes(kdf) if inc_csv else None
-            st.session_state["export_zip"] = export_mod.build_zip(pngs, csv_bytes)
-            st.session_state["export_csv"] = csv_bytes
-            st.session_state["export_ready"] = True
-            st.success(f"Listo: {len(pngs)} figura(s)"
-                       + (" + CSV" if inc_csv else "") + ".")
+                for label, (fn, fname) in disponibles.items():
+                    pngs[label] = (fname, fn(kdf))
         except Exception as e:
-            st.error(f"No se pudieron generar los archivos: {e}")
-            st.session_state["export_ready"] = False
+            st.error(f"No se pudieron generar las figuras: {e}")
+            pngs = {}
+        st.session_state["_export_pngs"] = pngs
+        st.session_state["_export_firma"] = firma
+    pngs = st.session_state.get("_export_pngs", {})
 
-    if st.session_state.get("export_ready"):
-        st.download_button(
-            "⬇️ Descargar ZIP (figuras + CSV)",
-            data=st.session_state["export_zip"],
-            file_name="tracker_uai_export.zip",
-            mime="application/zip",
-            width="stretch",
-        )
-        if st.session_state.get("export_csv") is not None:
+    if n < 3:
+        st.caption("Con menos de 3 puntos no se generan la aceleración ni el "
+                   "error de detección.")
+
+    cols = st.columns(2)
+    for i, (label, (fname, data)) in enumerate(pngs.items()):
+        with cols[i % 2]:
+            st.image(data, caption=label, width="stretch")
             st.download_button(
-                "⬇️ Descargar solo el CSV",
-                data=st.session_state["export_csv"],
-                file_name="datos_tracker_uai.csv",
-                mime="text/csv",
+                f"⬇️ Descargar {fname}",
+                data=data,
+                file_name=fname,
+                mime="image/png",
                 width="stretch",
+                key=f"dl_{fname}",
             )
 
-    with st.expander("👁️ Previsualizar datos a exportar"):
+    # --- Datos ---------------------------------------------------------------
+    st.markdown("#### Datos")
+    csv_bytes = export_mod.dataframe_to_csv_bytes(kdf)
+    d1, d2 = st.columns(2)
+    d1.download_button(
+        "⬇️ Descargar tabla de datos (CSV)",
+        data=csv_bytes,
+        file_name="datos_tracker_uai.csv",
+        mime="text/csv",
+        width="stretch",
+        help="Se abre directo en Excel: incluye tiempo, posición, velocidad y "
+        "aceleración.",
+    )
+    d2.download_button(
+        "⬇️ Descargar TODO en un ZIP",
+        data=export_mod.build_zip({f: d for f, d in pngs.values()}, csv_bytes),
+        file_name="tracker_uai_export.zip",
+        mime="application/zip",
+        width="stretch",
+        help="Todas las figuras en PNG más el CSV, en un solo archivo.",
+    )
+
+    with st.expander("👁️ Ver la tabla de datos"):
         st.dataframe(kdf, width="stretch")
 
 
