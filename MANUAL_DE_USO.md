@@ -11,19 +11,46 @@ multiplataforma).
 
 ## 1. Requisitos
 
-- **Python 3.11 o superior** (probado hasta 3.14). Es lo único que debes
-  instalar tú; el resto lo instala la app sola la primera vez.
+- **Windows:** nada. El lanzador se encarga de todo, y **nunca pide permisos
+  de administrador**.
+- **macOS / Linux:** Python 3.9 o superior (probado hasta 3.14).
 - Un navegador web (Chrome, Edge, Firefox, Safari).
 - Conexión a internet solo la **primera vez** (para descargar las librerías).
 
 ---
 
-## 2. Instalación de Python (una sola vez)
+## 2. Antes de empezar en Windows: desbloquear el ZIP
 
-### Windows
-1. Entra a <https://www.python.org/downloads/> y descarga Python 3.11+.
-2. En el instalador, **marca la casilla "Add Python to PATH"** antes de
-   continuar. (Alternativa: instalar "Python 3.12" desde la Microsoft Store.)
+Windows marca como sospechoso todo archivo bajado de internet, y esa marca se
+copia a cada archivo que extraes. Por eso aparece la pantalla azul *"Windows
+protegió tu PC"*. Se quita **una sola vez, antes de descomprimir**:
+
+1. Clic derecho sobre el ZIP descargado → **Propiedades**.
+2. Abajo, marca la casilla **Desbloquear** (si aparece) → **Aceptar**.
+3. Recién ahora: clic derecho → **Extraer todo**.
+
+Si ya lo descomprimiste sin desbloquear, borra la carpeta extraída, desbloquea
+el ZIP y extrae de nuevo. Y si aun así aparece la pantalla azul:
+**Más información → Ejecutar de todas formas**.
+
+---
+
+## 3. Instalación de Python
+
+### Windows: no hace falta
+
+El lanzador busca Python en tu equipo y, si no lo encuentra, te ofrece
+descargar su **propia copia portable** (unos 11 MB, del sitio oficial
+python.org). Responde que sí y listo. Esa copia:
+
+- **no** pide permisos de administrador,
+- **no** modifica el `PATH` ni afecta a otros programas,
+- vive en `%LOCALAPPDATA%\TrackerUAI` y se desinstala borrando esa carpeta.
+
+> Si prefieres instalar Python de todos modos, en el instalador de python.org
+> elige **"Install for me only" / "Solo para mí"**: así tampoco te pedirá
+> administrador. Marcar *"Add python.exe to PATH"* ayuda, pero ya no es
+> obligatorio.
 
 ### macOS
 - Opción A: descarga el instalador desde <https://www.python.org/downloads/>.
@@ -37,17 +64,22 @@ sudo apt install python3 python3-venv python3-pip
 
 Para comprobar que quedó instalado, abre una terminal y escribe:
 ```bash
-python --version      # en Windows
-python3 --version     # en macOS/Linux
+python3 --version
 ```
-Debe mostrar `Python 3.11` o superior.
+Debe mostrar `Python 3.9` o superior.
 
 ---
 
-## 3. Iniciar el programa
+## 4. Iniciar el programa
 
 ### Windows
 - Doble clic en **`Iniciar_Tracker_UAI.bat`**.
+- Si algo falla, hay dos opciones de rescate. Mantén **SHIFT** + clic derecho
+  en la carpeta → *"Abrir la ventana de PowerShell aquí"* y escribe:
+  - `.\Iniciar_Tracker_UAI.bat --portable` → usa la copia portable de Python,
+    ignorando la instalación del sistema.
+  - `.\Iniciar_Tracker_UAI.bat --reparar` → borra el entorno y lo rehace desde
+    cero (no toca tus videos).
 
 ### macOS / Linux
 - Abre una terminal en la carpeta del programa y ejecuta:
@@ -75,7 +107,7 @@ presiona `Ctrl + C` en ella (macOS/Linux).
 
 ---
 
-## 4. Guía de uso
+## 5. Guía de uso
 
 La barra lateral izquierda tiene el **selector de etapas** y la **carga del
 video**. Hay dos grandes usos:
@@ -139,7 +171,7 @@ en el péndulo simple.
 
 ---
 
-## 5. Consejos para grabar los videos
+## 6. Consejos para grabar los videos
 
 - Cámara **perpendicular** al plano del movimiento y **fija** (trípode o apoyada).
 - La regla de calibración debe estar **en el mismo plano** que el movimiento.
@@ -150,11 +182,14 @@ en el péndulo simple.
 
 ---
 
-## 6. Solución de problemas
+## 7. Solución de problemas
 
 | Problema | Solución |
 |---|---|
-| "No se encontró Python" | Reinstala Python marcando **Add to PATH** (Windows). |
+| "Windows protegió tu PC" | Desbloquea el ZIP **antes** de extraerlo (sección 2). O bien: *Más información → Ejecutar de todas formas*. |
+| Windows pide permisos de administrador | No es Tracker UAI, es el instalador de Python. Cancela y deja que el lanzador use su copia portable. |
+| "No se encontró Python" | Vuelve a ejecutar el `.bat` y acepta la copia portable, o ejecútalo con `--portable`. |
+| "Falló la instalación de las librerías" | Casi siempre es la red. Reintenta; si quedó a medias, ejecuta `.\Iniciar_Tracker_UAI.bat --reparar`. |
 | El video `.mov` no carga o se cuelga | Suele ser el códec HEVC. Conviértelo a H.264: `ffmpeg -i entrada.mov -c:v libx264 salida.mp4` |
 | El video es muy largo / lento | En la Etapa 1, elige un **intervalo** corto de frames. |
 | No aparece el método CSRT | Instalaste `opencv-python` en vez de `opencv-contrib-python`. |
@@ -162,15 +197,19 @@ en el péndulo simple.
 
 ---
 
-## 7. Compartir el programa
+## 8. Compartir el programa
 
 - **Windows:** ejecuta `Crear_paquete_para_compartir.bat` para generar un `.zip`
   limpio y envíalo. El estudiante sigue `LEEME_ESTUDIANTES.txt`.
 - **macOS/Linux:** comparte la carpeta (sin `.venv`) y el archivo
   `iniciar_tracker.sh`.
 
-En todos los casos, el único requisito en el equipo del estudiante es tener
-**Python 3.11+** instalado.
+En **Windows no hay requisitos previos**: si el equipo no tiene Python, el
+lanzador ofrece descargar su propia copia portable, sin permisos de
+administrador. Recuérdale a quien lo reciba que **desbloquee el ZIP antes de
+descomprimir** (sección 2): es lo que evita la pantalla azul de Windows.
+
+En **macOS/Linux** sí hace falta **Python 3.9+** instalado.
 
 ---
 

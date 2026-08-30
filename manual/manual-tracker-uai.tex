@@ -89,17 +89,61 @@ una pestaña independiente de gráficos:
 \section{Requisitos e instalación}
 %%=============================================================================
 
-Lo único que debes instalar tú es \textbf{Python 3.11 o superior}. El resto de las
-librerías las instala la aplicación automáticamente la primera vez que la abres.
+En \textbf{Windows no necesitas instalar nada}, y en ningún momento se piden
+permisos de administrador. En macOS y Linux hace falta \textbf{Python 3.9 o
+superior}. El resto de las librerías las instala la aplicación automáticamente
+la primera vez que la abres.
 
-\subsection{Instalar Python (una sola vez)}
+\subsection{Windows: desbloquear el ZIP antes de descomprimir}
+\label{sec:desbloquear}
+
+Windows marca (\emph{Mark-of-the-Web}) todo archivo descargado de internet, y
+esa marca se copia a cada archivo que extraes del ZIP. Es la causa de la
+pantalla azul \emph{«Windows protegió tu PC»}. Se quita una sola vez, y hay que
+hacerlo \textbf{antes} de descomprimir.
+
+\begin{receta}[Desbloquear el paquete]
+  \begin{enumerate}
+    \item Clic \textbf{derecho} sobre el archivo ZIP descargado
+      $\rightarrow$ \textbf{Propiedades}.
+    \item Abajo del todo, si aparece la casilla \textbf{Desbloquear}, márcala.
+    \item \textbf{Aceptar}.
+    \item Recién ahora: clic derecho $\rightarrow$ \textbf{Extraer todo}.
+  \end{enumerate}
+\end{receta}
+
+\begin{obs}
+  Si ya lo descomprimiste sin desbloquear, borra la carpeta extraída,
+  desbloquea el ZIP y extrae de nuevo. Y si aun así aparece la pantalla azul,
+  pulsa \textbf{«Más información»} $\rightarrow$ \textbf{«Ejecutar de todas
+  formas»}: el aviso es de procedencia, no de contenido.
+\end{obs}
+
+\subsection{Windows: Python se resuelve solo}
+
+Al abrir \texttt{Iniciar\_Tracker\_UAI.bat}, el lanzador busca un Python
+adecuado en tu equipo. Si no encuentra ninguno, te ofrece descargar su
+\textbf{propia copia portable} (unos 11 MB, la distribución
+\emph{embeddable} oficial de \texttt{python.org}). Responde que sí. Esa copia:
+
+\begin{itemize}
+  \item \textbf{no} requiere permisos de administrador;
+  \item \textbf{no} modifica el \texttt{PATH} ni afecta a otros programas;
+  \item vive en \texttt{\%LOCALAPPDATA\%\textbackslash TrackerUAI} y se
+    desinstala borrando esa carpeta.
+\end{itemize}
+
+\begin{obs}
+  Si prefieres instalar Python de todos modos, en el instalador de
+  \texttt{python.org} elige \textbf{«Install for me only»} («Solo para mí»):
+  así tampoco te pedirá administrador. Marcar «Add python.exe to PATH» ayuda,
+  pero con este lanzador ya \textbf{no} es obligatorio.
+\end{obs}
+
+\subsection{macOS y Linux: instalar Python (una sola vez)}
 
 \begin{receta}[Según tu sistema operativo]
   \begin{itemize}
-    \item \textbf{Windows:} descarga Python desde
-      \texttt{python.org/downloads} y, en el instalador, marca la casilla
-      \textbf{«Add Python to PATH»}. (Alternativa: instalar «Python 3.12» desde la
-      Microsoft Store.)
     \item \textbf{macOS:} instala desde \texttt{python.org/downloads} o, con
       Homebrew, ejecuta \texttt{brew install python}.
     \item \textbf{Linux (Ubuntu/Debian):} instala los paquetes base de Python.
@@ -111,14 +155,8 @@ sudo apt update
 sudo apt install python3 python3-venv python3-pip
 \end{lstlisting}
 
-Para comprobar la instalación, abre una terminal y ejecuta \texttt{python -{}-version}
-(en Windows) o \texttt{python3 -{}-version} (en macOS/Linux); debe mostrar
-\texttt{Python 3.11} o superior.
-
-\begin{errcomun}
-  En Windows, olvidar marcar \textbf{«Add Python to PATH»} hace que el programa no
-  encuentre Python y no abra. Si te ocurre, reinstala Python marcando esa casilla.
-\end{errcomun}
+Para comprobar la instalación, abre una terminal y ejecuta
+\texttt{python3 -{}-version}; debe mostrar \texttt{Python 3.9} o superior.
 
 %%=============================================================================
 \section{Iniciar el programa}
@@ -151,6 +189,28 @@ La aplicación se abre sola en tu navegador (normalmente en
   librerías; la ventana de la terminal queda abierta mostrando el avance. Las
   siguientes veces abre en segundos. Para cerrar el programa, cierra esa ventana
   (o presiona \texttt{Ctrl+C} en ella).
+\end{obs}
+
+\subsection{Si algo falla en Windows: las dos opciones de rescate}
+
+El lanzador acepta dos argumentos. Para usarlos, mantén \textbf{SHIFT} y haz
+clic derecho en un espacio vacío de la carpeta del programa, elige
+\emph{«Abrir la ventana de PowerShell aquí»} y escribe la línea que
+corresponda.
+
+\begin{lstlisting}[caption={Forzar la copia portable de Python.}]
+.\Iniciar_Tracker_UAI.bat --portable
+\end{lstlisting}
+
+\begin{lstlisting}[caption={Borrar el entorno y rehacerlo desde cero.}]
+.\Iniciar_Tracker_UAI.bat --reparar
+\end{lstlisting}
+
+\begin{obs}
+  \texttt{-{}-portable} sirve cuando el Python del sistema está roto o
+  incompleto: instala una copia independiente y la usa. \texttt{-{}-reparar}
+  sirve cuando una instalación anterior quedó a medias; borra solo el entorno
+  de trabajo, nunca tus videos ni tus datos.
 \end{obs}
 
 %%=============================================================================
@@ -274,8 +334,16 @@ en función de $\sin(\theta)$ en el péndulo simple.
     \toprule
     \textbf{Problema} & \textbf{Solución} \\
     \midrule
-    «No se encontró Python» & Reinstala Python marcando \textbf{Add to PATH}
-      (Windows). \\
+    «Windows protegió tu PC» & Desbloquea el ZIP \emph{antes} de extraerlo
+      (sección~\ref{sec:desbloquear}); o pulsa «Más información»
+      $\rightarrow$ «Ejecutar de todas formas». \\
+    Windows pide permisos de administrador & No es Tracker UAI, es el
+      instalador de Python. Cancela y deja que el lanzador use su copia
+      portable. \\
+    «No se encontró Python» & Vuelve a ejecutar el lanzador y acepta la copia
+      portable, o ejecútalo con \texttt{-{}-portable}. \\
+    «Falló la instalación de las librerías» & Casi siempre es la red. Reintenta;
+      si quedó a medias, ejecuta el lanzador con \texttt{-{}-reparar}. \\
     El video \texttt{.mov} no carga o se cuelga & Suele ser el códec HEVC.
       Conviértelo a H.264 con \texttt{ffmpeg}. \\
     El video es muy largo o lento & En la Etapa 1, elige un intervalo corto de
@@ -301,13 +369,16 @@ ffmpeg -i entrada.mov -c:v libx264 -pix_fmt yuv420p salida.mp4
 \section{Compartir el programa}
 %%=============================================================================
 
-El único requisito en el equipo de destino es tener \textbf{Python 3.11+}
-instalado; el resto lo instala el lanzador automáticamente.
+En \textbf{Windows no hay requisitos previos} en el equipo de destino: si no
+tiene Python, el lanzador ofrece descargar su propia copia portable, sin
+permisos de administrador. En macOS y Linux sí hace falta \textbf{Python 3.9+}.
 
 \begin{receta}[Distribución]
   \begin{itemize}
     \item \textbf{Windows:} ejecuta \texttt{Crear\_paquete\_para\_compartir.bat}
-      para generar un ZIP limpio y envíalo. El estudiante sigue
+      para generar un ZIP limpio y envíalo. Advierte a quien lo reciba que
+      \textbf{desbloquee el ZIP antes de descomprimirlo}
+      (sección~\ref{sec:desbloquear}); luego sigue
       \texttt{LEEME\_ESTUDIANTES.txt}.
     \item \textbf{macOS / Linux:} comparte la carpeta (sin la subcarpeta del
       entorno virtual) junto con \texttt{iniciar\_tracker.sh}.
@@ -316,7 +387,9 @@ instalado; el resto lo instala el lanzador automáticamente.
 
 \begin{resumen}
   \begin{itemize}
-    \item Tracker UAI funciona en Windows, macOS y Linux; solo requiere Python 3.11+.
+    \item Tracker UAI funciona en Windows, macOS y Linux. En Windows no requiere
+      instalar nada ni permisos de administrador: el lanzador resuelve Python
+      por sí solo.
     \item El análisis de video sigue seis etapas: Video, Calibración, Tracking,
       Cinemática, Ajuste y Exportar.
     \item La pestaña \emph{Gráficos} permite analizar datos experimentales sin video.

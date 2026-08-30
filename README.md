@@ -45,11 +45,60 @@ cd tracker-uai
 
 ## Requisitos
 
-- **Python 3.11 o superior** (probado también en 3.14).
+- **Python 3.9 o superior** (desarrollado en 3.11; probado también en 3.14).
+  En Windows **no hace falta tener Python**: el lanzador puede descargar una
+  copia portable (ver más abajo).
 - Los paquetes de `requirements.txt` (Streamlit, OpenCV, NumPy, SciPy, Plotly,
   pandas, Matplotlib).
 
-## Instalación
+## Instalación rápida en Windows (sin administrador)
+
+Para uso docente o para un colega que no programa, **no hay que instalar nada
+a mano**: doble clic en `Iniciar_Tracker_UAI.bat`. El lanzador, por orden:
+
+1. Reutiliza el entorno de una ejecución anterior, si existe.
+2. Busca un Python ≥ 3.9 ya instalado (`py -3`, `python`, o instalaciones por
+   usuario en `%LOCALAPPDATA%\Programs\Python\`) y crea un entorno virtual.
+3. Si no encuentra ninguno, **ofrece descargar Python portable** (~11 MB,
+   distribución *embeddable* oficial de python.org) en
+   `%LOCALAPPDATA%\TrackerUAI\python`.
+4. Instala las dependencias y arranca la app.
+
+Nada de esto requiere permisos de administrador ni modifica el `PATH`: todo
+vive en `%LOCALAPPDATA%\TrackerUAI`, y desinstalar es borrar esa carpeta.
+
+Opciones del lanzador:
+
+```bat
+Iniciar_Tracker_UAI.bat --portable
+```
+
+```bat
+Iniciar_Tracker_UAI.bat --reparar
+```
+
+`--portable` fuerza la copia portable aunque haya Python en el equipo (útil si
+la instalación del sistema está rota). `--reparar` borra el entorno y lo rehace
+desde cero.
+
+### El aviso "Windows protegió tu PC"
+
+No es un problema del programa: Windows marca (*Mark-of-the-Web*) todo archivo
+descargado de internet, y esa marca se propaga a cada archivo extraído del ZIP,
+incluido el `.bat`. La solución definitiva es quitarla **del ZIP, antes de
+descomprimir**: clic derecho sobre el ZIP → **Propiedades** → marcar
+**Desbloquear** → Aceptar → recién ahí *Extraer todo*.
+
+Si ya se descomprimió sin desbloquear, se puede limpiar la carpeta extraída:
+
+```powershell
+Get-ChildItem -Recurse 'C:\ruta\a\TrackerUAI' | Unblock-File
+```
+
+Y si aun así aparece la pantalla azul: **Más información → Ejecutar de todas
+formas**.
+
+## Instalación manual (desarrollo, macOS, Linux)
 
 Desde una terminal, en la carpeta del proyecto:
 
@@ -87,14 +136,15 @@ Pensado para Windows, sin que el estudiante sepa programar:
 
 1. Ejecuta **`Crear_paquete_para_compartir.bat`** → genera
    `TrackerUAI_compartir.zip` (limpio, sin `.venv` ni videos).
-2. Envía ese `.zip` al estudiante.
-3. El estudiante sigue **`LEEME_ESTUDIANTES.txt`**: instala Python una vez
-   (con *Add to PATH*), descomprime y hace doble clic en
-   **`Iniciar_Tracker_UAI.bat`**. La primera vez instala todo solo; luego abre
-   en segundos.
+2. Envía ese `.zip` al estudiante o colega.
+3. Quien lo recibe sigue **`LEEME_ESTUDIANTES.txt`**: **desbloquea el ZIP**
+   (clic derecho → Propiedades → Desbloquear), lo descomprime y hace doble clic
+   en **`Iniciar_Tracker_UAI.bat`**. La primera vez instala todo solo; luego
+   abre en segundos.
 
-> El único requisito en el equipo del estudiante es **Python 3.11+**. El resto
-> lo instala el lanzador automáticamente en un entorno propio (`.venv`).
+> **No hay requisitos previos en el equipo de destino.** Si no hay Python, el
+> lanzador ofrece descargar su propia copia portable. En ningún momento se
+> piden permisos de administrador.
 
 ---
 
@@ -178,6 +228,12 @@ del péndulo en FIS201.
   módulos ya cargados. **Reinicia el servidor** (Ctrl+C y relanzar); la tecla
   *R* solo re-ejecuta `app.py`.
 - **No aparece CSRT:** tienes `opencv-python` en vez de `opencv-contrib-python`.
+- **"Windows protegió tu PC" al abrir el `.bat`:** desbloquea el ZIP antes de
+  extraerlo (ver más arriba).
+- **Windows pide permisos de administrador:** no es Tracker UAI, es el
+  instalador de Python. Cancela y deja que el lanzador use su copia portable
+  (`Iniciar_Tracker_UAI.bat --portable`).
+- **El entorno quedó a medias:** `Iniciar_Tracker_UAI.bat --reparar`.
 
 ---
 
@@ -200,6 +256,7 @@ tracker-uai/
 ├── app.py                       # interfaz Streamlit (solo UI)
 ├── export.py                    # CSV + figuras PNG/SVG + ZIP
 ├── requirements.txt
+├── conftest.py                  # pone la raíz en sys.path para pytest
 ├── README.md                    # este archivo
 ├── MANUAL_DE_USO.md             # manual de uso para el usuario final
 ├── LEEME_ESTUDIANTES.txt        # guía corta para estudiantes

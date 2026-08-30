@@ -1,46 +1,101 @@
 ========================================
-  TRACKER UAI - Instrucciones de uso
+  TRACKER UAI - Como instalarlo y usarlo
 ========================================
 
 Aplicacion para analizar videos de laboratorios de fisica.
 
-----------------------------------------
-PASO 1 (solo una vez): Instalar Python
-----------------------------------------
-Si tu computador no tiene Python:
-  - Entra a  https://www.python.org/downloads/
-  - Descarga Python 3.11 o superior.
-  - IMPORTANTE: durante la instalacion, marca la casilla
-    "Add Python to PATH".
-  (Alternativa: instalar "Python 3.12" desde la Microsoft Store.)
+NO necesitas permisos de administrador en ningun momento.
+Todo se instala dentro de tu propia cuenta de usuario.
 
-----------------------------------------
-PASO 2: Abrir el programa
-----------------------------------------
-  1. Descomprime esta carpeta (clic derecho -> Extraer todo).
-  2. Haz doble clic en:  Iniciar_Tracker_UAI.bat
-  3. La PRIMERA vez tarda unos minutos (instala lo necesario).
-     Las siguientes veces abre en pocos segundos.
-  4. Se abrira solo en tu navegador (Chrome, Edge, etc.).
 
-Si Windows muestra un aviso azul ("Windows protegio tu PC"):
-  clic en "Mas informacion" -> "Ejecutar de todas formas".
+========================================
+  PASO 1 (IMPORTANTE): Desbloquear el ZIP
+========================================
 
-----------------------------------------
-PASO 3: Usar
-----------------------------------------
+Windows marca como "peligroso" TODO archivo bajado de internet, y esa
+marca se copia a cada archivo que extraigas. Por eso hay que quitarla
+UNA sola vez, ANTES de descomprimir:
+
+  1. Busca el archivo ZIP que descargaste (normalmente en Descargas).
+  2. Clic DERECHO sobre el ZIP  ->  Propiedades.
+  3. Abajo del todo, si aparece la casilla "Desbloquear", MARCALA.
+  4. Aceptar.
+  5. Recien ahora: clic derecho -> Extraer todo.
+
+Si haces esto, Windows no volvera a molestarte.
+Si ya lo descomprimiste sin desbloquear, no pasa nada: borra la
+carpeta extraida, desbloquea el ZIP y extrae de nuevo.
+
+
+========================================
+  PASO 2: Abrir el programa
+========================================
+
+  1. Entra a la carpeta que extrajiste.
+  2. Doble clic en:  Iniciar_Tracker_UAI.bat
+  3. La PRIMERA vez tarda varios minutos: descarga e instala lo que
+     necesita. Las siguientes veces abre en segundos.
+  4. Se abre solo en tu navegador (Chrome, Edge, etc.).
+
+Si tu computador no tiene Python, el programa te preguntara si quiere
+instalar su propia copia portable. Responde que SI (presiona Enter):
+
+  - Son unos 11 MB, del sitio oficial python.org.
+  - NO pide permisos de administrador.
+  - NO cambia el PATH ni afecta a otros programas.
+  - Queda guardada en tu carpeta de usuario y se borra sola si borras
+    la carpeta  %LOCALAPPDATA%\TrackerUAI
+
+Si aun asi aparece la pantalla azul "Windows protegio tu PC":
+  clic en "Mas informacion"  ->  "Ejecutar de todas formas".
+(Si hiciste bien el PASO 1, esta pantalla no deberia aparecer.)
+
+
+========================================
+  PASO 3: Usar
+========================================
+
   - Sube tu video en la barra lateral.
   - Avanza por las etapas: 1 Video -> ... -> 6 Exportar.
   - Al final, descarga el CSV y los graficos.
 
 Para CERRAR el programa: cierra la ventana negra (terminal).
 
-----------------------------------------
-Problemas frecuentes
-----------------------------------------
-- "No se encontro Python": vuelve al PASO 1 (recuerda "Add to PATH").
-- El video .mov no carga o va muy lento: conviertelo a mp4 (H.264).
-- Videos largos: en la etapa 1, elige un INTERVALO corto de frames
-  para que procese solo el tramo que te interesa.
+
+========================================
+  Problemas frecuentes
+========================================
+
+- "Windows protegio tu PC"
+    Haz el PASO 1 (desbloquear el ZIP antes de extraer). Si ya es
+    tarde: "Mas informacion" -> "Ejecutar de todas formas".
+
+- Se pidieron permisos de administrador
+    Tracker UAI nunca los pide. Si te aparecio ese cuadro, fue el
+    instalador de Python de python.org. No hace falta instalarlo:
+    deja que Tracker UAI use su copia portable (PASO 2). Si prefieres
+    instalar Python igual, en el instalador elige
+    "Install for me only" / "Solo para mi" y NO pedira administrador.
+
+- "Fallo la instalacion de las librerias"
+    Casi siempre es la red (wifi caido o la red del campus bloquea
+    pypi.org). Reintenta con otra conexion. Si quedo a medias:
+      1. Manten SHIFT y haz clic derecho en la carpeta del programa.
+      2. Elige "Abrir la ventana de PowerShell aqui".
+      3. Escribe:   .\Iniciar_Tracker_UAI.bat --reparar
+    Eso borra el entorno y lo instala de nuevo. No pierdes tus videos.
+
+- El video .mov no carga o va muy lento
+    Conviertelo a mp4 (H.264).
+
+- Videos largos
+    En la etapa 1, elige un INTERVALO corto de frames para que procese
+    solo el tramo que te interesa.
+
+- Quiero desinstalar todo
+    Borra la carpeta del programa y la carpeta
+    %LOCALAPPDATA%\TrackerUAI  (pegala en la barra del Explorador).
+    No queda nada mas en el sistema.
+
 
 Cualquier duda, escribe a tu profesor o ayudante.
