@@ -18,7 +18,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 
-from core.kinematics import savgol_smooth  # noqa: E402
+from core.kinematics import position_columns, savgol_smooth  # noqa: E402
 
 
 def _fig_to_png(fig) -> bytes:
@@ -30,12 +30,18 @@ def _fig_to_png(fig) -> bytes:
 
 
 def fig_position(df: pd.DataFrame) -> bytes:
-    """Figura de posición x(t) e y(t)."""
+    """Figura de posición x(t) e y(t).
+
+    Usa la posición suavizada si el estudiante activó el suavizado, igual que
+    los gráficos en pantalla, para que la figura del informe sea la misma que
+    vio en la app.
+    """
+    cx, cy, suave = position_columns(df)
     fig, ax = plt.subplots(figsize=(7, 4))
-    ax.plot(df["t"], df["x_m"], "o-", label="x(t)", ms=3)
-    ax.plot(df["t"], df["y_m"], "s-", label="y(t)", ms=3)
+    ax.plot(df["t"], df[cx], "o-", label="x(t)", ms=3)
+    ax.plot(df["t"], df[cy], "s-", label="y(t)", ms=3)
     ax.set_xlabel("t (s)")
-    ax.set_ylabel("posición (m)")
+    ax.set_ylabel("posición suavizada (m)" if suave else "posición (m)")
     ax.set_title("Posición vs tiempo")
     ax.legend()
     ax.grid(alpha=0.3)
@@ -70,11 +76,12 @@ def fig_acceleration(df: pd.DataFrame) -> bytes:
 
 def fig_trajectory(df: pd.DataFrame) -> bytes:
     """Figura de la trayectoria x-y con aspecto igual."""
+    cx, cy, suave = position_columns(df)
     fig, ax = plt.subplots(figsize=(6, 6))
-    ax.plot(df["x_m"], df["y_m"], "o-", ms=3)
+    ax.plot(df[cx], df[cy], "o-", ms=3)
     ax.set_xlabel("x (m)")
     ax.set_ylabel("y (m)")
-    ax.set_title("Trayectoria x-y")
+    ax.set_title("Trayectoria x-y" + (" (suavizada)" if suave else ""))
     ax.set_aspect("equal", adjustable="datalim")
     ax.grid(alpha=0.3)
     return _fig_to_png(fig)

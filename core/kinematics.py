@@ -140,3 +140,88 @@ def kinematics_dataframe(
     out["ay"] = k["ay"]
     out["speed"] = k["speed"]
     return out
+
+
+def position_columns(df: pd.DataFrame) -> tuple:
+    """Columnas de posición a graficar: suavizadas si existen, crudas si no.
+
+    Devuelve ``(nombre_x, nombre_y, suavizado)``. Centraliza la regla para que
+    la pantalla y las figuras exportadas grafiquen **la misma señal**: antes,
+    la app mostraba ``x_s`` con el suavizado activo mientras el PNG exportado
+    seguía usando ``x_m``, y el informe terminaba con una figura distinta de
+    la que el estudiante había visto.
+    """
+    if "x_s" in df.columns and "y_s" in df.columns:
+        return "x_s", "y_s", True
+    return "x_m", "y_m", False
+
+
+def motion_summary(df: pd.DataFrame) -> Dict[str, float]:
+    """Resumen numérico del movimiento, para mostrar junto a los gráficos.
+
+    Espera un DataFrame ya procesado por :func:`kinematics_dataframe`.
+    Devuelve un diccionario con ``nan`` en las magnitudes que no se puedan
+    calcular (por ejemplo, con menos de dos puntos).
+    """
+    nan = float("nan")
+    vacio = {
+        "n_puntos": 0, "duracion": nan, "dt_medio": nan, "fps_efectivo": nan,
+        "desplazamiento": nan, "recorrido": nan, "rapidez_media": nan,
+        "rapidez_maxima": nan, "aceleracion_media": nan, "ruido_rms": nan,
+    }
+    if df is None or df.empty:
+        return vacio
+
+    cx, cy, _ = position_columns(df)
+    t = np.asarray(df["t"], dtype=float)
+    x = np.asarray(df[cx], dtype=float)
+    y = np.asarray(df[cy], dtype=float)
+    ok = np.isfinite(t) & np.isfinite(x) & np.isfinite(y)
+    t, x, y = t[ok], x[ok], y[ok]
+    n = len(t)
+    if n < 2:
+        out = dict(vacio)
+        out["n_puntos"] = int(n)
+        return out
+
+    dt = np.diff(t)
+    dt_medio = float(np.mean(dt)) if len(dt) else nan
+    pasos = np.hypot(np.diff(x), np.diff(y))
+
+    speed = np.asarray(df["speed"], dtype=float) if "speed" in df else np.array([])
+    speed = speed[np.isfinite(speed)]
+    acc = (np.hypot(np.asarray(df["ax"], dtype=float),
+                    np.asarray(df["ay"], dtype=float))
+           if "ax" in df and "ay" in df else np.array([]))
+    acc = acc[np.isfinite(acc)]
+
+    # Ruido de marcado: dispersión del residuo respecto de la posición suavizada.
+    ruido = nan
+    if n >= 7:
+        rx = x - savgol_smooth(x, 7, 2)
+        ry = y - savgol_smooth(y, 7, 2)
+        ruido = float(np.sqrt(np.mean(rx**2 + ry**2)))
+
+    return {
+        "n_puntos": int(n),
+        "duracion": float(t[-1] - t[0]),
+        "dt_medio": dt_medio,
+        "fps_efectivo": float(1.0 / dt_medio) if dt_medio and dt_medio > 0 else nan,
+        "desplazamiento": float(np.hypot(x[-1] - x[0], y[-1] - y[0])),
+        "recorrido": float(np.sum(pasos)),
+        "rapidez_media": float(np.mean(speed)) if speed.size else nan,
+        "rapidez_maxima": float(np.max(speed)) if speed.size else nan,
+        "aceleracion_media": float(np.mean(acc)) if acc.size else nan,
+        "ruido_rms": ruido,
+    }
+
+
+def frame_gaps(frames, start: int, end: int, step: int = 1) -> list:
+    """Frames del intervalo ``[start, end]`` (cada ``step``) que no tienen punto.
+
+    Sirve para avisar al estudiante de que el seguimiento automático perdió el
+    objeto en algún tramo, antes de que lo descubra mirando un gráfico raro.
+    """
+    marcados = {int(f) for f in frames}
+    step = max(1, int(step))
+    return [f for f in range(int(start), int(end) + 1, step) if f not in marcados]

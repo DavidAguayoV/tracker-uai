@@ -224,3 +224,34 @@ def track_csrt(
         if progress_cb:
             progress_cb((idx - start) / total)
     return results
+
+
+def box_from_click(
+    x: float,
+    y: float,
+    size: float,
+    frame_width: int,
+    frame_height: int,
+    min_size: int = 8,
+) -> Tuple[float, float, float, float]:
+    """Recuadro cuadrado de lado ``size`` centrado en el clic, recortado al frame.
+
+    El componente de imagen solo entrega un rectángulo cuando el usuario
+    **arrastra**; un clic simple devuelve un recuadro de área nula, que antes se
+    descartaba en silencio y dejaba al estudiante sin ninguna señal visual de
+    lo que había seleccionado. Esta función convierte ese clic en un recuadro
+    utilizable y visible de inmediato.
+
+    Devuelve ``(x, y, w, h)`` en píxeles de la imagen original, garantizando
+    que quede dentro del frame y con lado al menos ``min_size``.
+    """
+    fw, fh = int(frame_width), int(frame_height)
+    lado = float(max(min_size, min(size, fw, fh)))
+    x0 = float(np.clip(x - lado / 2.0, 0, max(0, fw - lado)))
+    y0 = float(np.clip(y - lado / 2.0, 0, max(0, fh - lado)))
+    return (x0, y0, lado, lado)
+
+
+def default_box_size(frame_width: int) -> int:
+    """Lado inicial sugerido para el recuadro del objeto, según la resolución."""
+    return int(max(24, round(frame_width / 16.0)))
