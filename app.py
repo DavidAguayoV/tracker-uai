@@ -31,14 +31,19 @@ from core.autotrack import (
 )
 from core.calibration import Calibration, angle_from_points, scale_from_two_points
 from core.fitting import (
+    CD_RANGO_ACEPTABLE,
     MODELS,
     acceleration_from_quadratic,
+    bar_gyration_radius,
+    bifilar_inertia,
+    drag_from_terminal_velocity,
     fit_conical_pendulum,
     fit_ellipse,
     fit_model,
     period_by_zero_crossings,
+    period_timing_uncertainty,
     piecewise_linear_fit,
-    plateau_value,
+    read_plateau,
     swept_area_segments,
 )
 from core.kinematics import kinematics_dataframe
@@ -1926,18 +1931,121 @@ def stage_ajuste() -> None:
 
     elif wf == "terminal_velocity":
         sig_label, v = _signal_picker(kdf, "speed", "term_sig")
-        last_n = st.slider("Promediar últimos N puntos (meseta)",
-                           2, max(2, len(kdf)), min(5, len(kdf)))
-        vt, s = plateau_value(t, v, last_n=last_n)
-        st.metric(preset.param_label, _fmt(vt, s))
+        n_pts = len(kdf)
+
+        modo = st.radio(
+            "Cómo elegir la meseta",
+            ["Últimos N cuadros", "Intervalo de tiempo"],
+            horizontal=True,
+            help="La guía pide promediar los últimos 8 a 15 cuadros del tramo "
+            "en que la rapidez ya no crece de forma sistemática. Usa el "
+            "intervalo si el video sigue después de que el cuerpo toca el "
+            "suelo, o si la suelta quedó dentro del tramo marcado.",
+        )
+        if modo.startswith("Últimos"):
+            last_n = st.slider("Cuadros a promediar", 2, max(2, n_pts),
+                               min(10, max(2, n_pts)))
+            pl = read_plateau(t, v, last_n=last_n)
+        else:
+            t0, t1 = float(np.min(t)), float(np.max(t))
+            paso = (t1 - t0) / max(n_pts - 1, 1) or 0.001
+            ini, fin = st.slider(
+                "Tramo de meseta (s)", t0, t1,
+                (t0 + 0.6 * (t1 - t0), t1), step=paso,
+            )
+            pl = read_plateau(t, v, t_min=ini, t_max=fin)
+
+        st.metric(preset.param_label, _fmt(pl.value, pl.sigma))
+        st.caption(f"Promedio de **{pl.n} cuadros**, entre t = {pl.t_start:.3f} s "
+                   f"y t = {pl.t_end:.3f} s. La incertidumbre mostrada es la "
+                   "desviación estándar de ese tramo.")
+
+        if not 8 <= pl.n <= 15:
+            st.warning(
+                f"Estás promediando {pl.n} cuadros. La guía pide entre **8 y "
+                "15**: con menos, el ruido cuadro a cuadro domina; con más, se "
+                "arrastra el tramo en que la rapidez todavía crecía."
+            )
+        if not pl.is_flat:
+            st.warning(
+                f"El tramo elegido todavía tiene pendiente "
+                f"({pl.slope:.3g} ± {pl.slope_err:.2g} m/s²): la rapidez "
+                f"**sigue creciendo**, un {pl.relative_drift * 100:.0f} % a lo "
+                "largo del tramo. Eso no es meseta, sino un punto intermedio "
+                "de la curva, y sesga v_t hacia abajo. Corre el tramo hacia el "
+                "final, o filma desde más alto para que alcance a saturar."
+            )
+
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=t, y=v, mode="lines+markers", name=sig_label))
-        fig.add_hline(y=vt, line_dash="dash",
-                      annotation_text=f"v_t ≈ {vt:.3g} m/s")
+        if np.isfinite(pl.t_start) and np.isfinite(pl.t_end):
+            fig.add_vrect(x0=pl.t_start, x1=pl.t_end, fillcolor="#50b4ff",
+                          opacity=0.15, line_width=0,
+                          annotation_text="tramo promediado",
+                          annotation_position="top left")
+        fig.add_hline(y=pl.value, line_dash="dash",
+                      annotation_text=f"v_t ≈ {pl.value:.3g} m/s")
         fig.update_layout(title="Lectura de meseta (velocidad terminal)",
                           xaxis_title="t (s)", yaxis_title=sig_label, height=380,
                           margin=dict(l=10, r=10, t=40, b=10))
         st.plotly_chart(fig, width="stretch")
+
+        with st.expander("🔎 Control de orden de magnitud: C_d de esta caída"):
+            st.caption(
+                "Esto **no** es el resultado del informe: ese sale del ajuste "
+                "lineal de v_t² contra m sobre las cinco configuraciones del "
+                "bloque A, que se hace fuera de la app con los promedios de "
+                "las tres repeticiones. Sirve para detectar aquí mismo un "
+                "problema de calibración o de lectura de la meseta."
+            )
+            c1, c2 = st.columns(2)
+            masa_g = c1.number_input("Masa de la pila, m (g)", min_value=0.0,
+                                     value=3.00, step=0.01, format="%.2f",
+                                     key="vt_masa")
+            diam_cm = c2.number_input("Diámetro del filtro, D (cm)",
+                                      min_value=0.0, value=11.0, step=0.1,
+                                      format="%.1f", key="vt_diam")
+            if masa_g <= 0 or diam_cm <= 0:
+                st.info("Escribe la masa y el diámetro medidos para esta "
+                        "configuración.")
+            elif not (np.isfinite(pl.value) and pl.value > 0):
+                st.info("Primero necesitas una lectura válida de la meseta.")
+            else:
+                try:
+                    dr = drag_from_terminal_velocity(
+                        pl.value, masa_g / 1000.0, diam_cm / 100.0,
+                        v_t_err=pl.sigma,
+                    )
+                except ValueError as e:
+                    st.error(str(e))
+                else:
+                    d1, d2, d3 = st.columns(3)
+                    d1.metric("C_d (esta caída)", _fmt(dr.c_d, dr.c_d_err))
+                    d2.metric("Área frontal A (m²)", f"{dr.area:.4g}")
+                    d3.metric("Reynolds Re", f"{dr.reynolds:,.0f}".replace(",", " "))
+                    lo, hi = CD_RANGO_ACEPTABLE
+                    if dr.in_reference_range:
+                        st.success(
+                            f"C_d = {dr.c_d:.3g} cae en el rango de referencia "
+                            f"{lo}–{hi} (diferencia de {dr.percent_difference:.0f} % "
+                            "respecto de 1,3). Vas bien."
+                        )
+                    else:
+                        st.warning(
+                            f"C_d = {dr.c_d:.3g} queda fuera del rango de "
+                            f"referencia {lo}–{hi}. Revisa la calibración "
+                            "(px→m), que la lectura sea de la meseta y no del "
+                            "tramo creciente, y que la masa sea la de la pila "
+                            "completa. Un factor 1000 delata un error de "
+                            "unidades (gramos por kilogramos)."
+                        )
+                    if dr.reynolds < 1000:
+                        st.info(
+                            f"Re ≈ {dr.reynolds:,.0f}".replace(",", " ")
+                            + ": por debajo de ~10³ el arrastre cuadrático ya "
+                            "no está garantizado. Verifica el diámetro y la "
+                            "calibración."
+                        )
 
     elif wf == "collision":
         axis_label = st.selectbox("Eje de movimiento", ["x (m)", "y (m)"])
@@ -2053,12 +2161,34 @@ def stage_ajuste() -> None:
     elif wf == "period_zero":
         sig_label, y = _signal_picker(kdf, preset.signal or "x_m", "pz_sig")
         T, n = period_by_zero_crossings(t, y)
+        fps_ef = st.session_state.fps_capture or (reader.fps if reader else None)
+        sigma_T = period_timing_uncertainty(fps_ef, n) if fps_ef else float("nan")
+
         if np.isnan(T):
             st.warning("No se detectaron suficientes oscilaciones para un cálculo "
                        "confiable. Marca más ciclos o revisa la señal elegida.")
         else:
-            st.metric(preset.param_label, f"{T:.4g} s")
-            st.caption(f"Contados {n} ciclos completos por cruces ascendentes.")
+            if np.isfinite(sigma_T):
+                st.metric(preset.param_label, _fmt(T, sigma_T))
+                st.caption(
+                    f"Contados **{n} ciclos completos** por cruces ascendentes "
+                    "(siempre en el mismo sentido de giro). Incertidumbre de "
+                    f"cronometraje ≈ {sigma_T:.3g} s: ±2 cuadros a "
+                    f"{fps_ef:.0f} fps, repartidos entre los {n} ciclos."
+                )
+            else:
+                st.metric(preset.param_label, f"{T:.4g} s")
+                st.caption(f"Contados {n} ciclos completos por cruces "
+                           "ascendentes (siempre en el mismo sentido de giro).")
+
+            if n < 10:
+                st.warning(
+                    f"La guía pide medir el período sobre **10 oscilaciones** y "
+                    f"aquí solo hay {n}. El error de identificar los cruces es "
+                    "el mismo se midan 1 o 10 ciclos, así que medir pocos lo "
+                    "multiplica. Filma al menos 12 oscilaciones (unos 45 s por "
+                    "toma) y amplía el intervalo de procesamiento."
+                )
 
         # Visualización del movimiento físico (overlay de la oscilación).
         with st.expander("👻 Ver movimiento (overlay de frames)", expanded=True):
@@ -2088,6 +2218,77 @@ def stage_ajuste() -> None:
                           xaxis_title="t (s)", yaxis_title=sig_label, height=380,
                           margin=dict(l=10, r=10, t=40, b=10))
         st.plotly_chart(fig, width="stretch")
+
+        with st.expander("🔎 Control de orden de magnitud: I_zz de este largo"):
+            st.caption(
+                "Esto **no** es el resultado del informe: ese sale del ajuste "
+                "lineal de T² contra H sobre los seis largos de hilo, que se "
+                "hace fuera de la app. Sirve para verificar aquí mismo que el "
+                "montaje y las mediciones son consistentes."
+            )
+            st.warning(
+                "En la fórmula entra **d, la semiseparación de los hilos** "
+                "(la mitad de la separación entre ellos), **no** el largo de "
+                "la barra. Con 2d = 5 cm sobre una barra de 15 cm, confundirlos "
+                "da un momento de inercia **nueve veces** mayor."
+            )
+            c1, c2, c3 = st.columns(3)
+            masa_g = c1.number_input("Masa del cuerpo, M (g)", min_value=0.0,
+                                     value=50.00, step=0.01, format="%.2f",
+                                     key="bf_masa")
+            sep_cm = c2.number_input("Separación entre hilos, 2d (cm)",
+                                     min_value=0.0, value=5.0, step=0.1,
+                                     format="%.1f", key="bf_sep")
+            largo_cm = c3.number_input("Largo de los hilos, H (cm)",
+                                       min_value=0.0, value=55.0, step=0.5,
+                                       format="%.1f", key="bf_H")
+            barra_cm = st.number_input(
+                "Largo del cuerpo, L (cm) — opcional, solo para comparar",
+                min_value=0.0, value=15.0, step=0.1, format="%.1f",
+                key="bf_L",
+                help="Si el cuerpo es una barra uniforme, su radio de giro "
+                "teórico es L/√12. No entra en el cálculo de I_zz.",
+            )
+
+            if np.isnan(T):
+                st.info("Primero necesitas una medición válida del período.")
+            elif masa_g <= 0 or sep_cm <= 0 or largo_cm <= 0:
+                st.info("Escribe la masa, la separación de los hilos y el largo "
+                        "de los hilos medidos en este ensayo.")
+            else:
+                try:
+                    bf = bifilar_inertia(
+                        T,
+                        masa_g / 1000.0,
+                        (sep_cm / 100.0) / 2.0,
+                        largo_cm / 100.0,
+                        period_err=sigma_T if np.isfinite(sigma_T) else 0.0,
+                    )
+                except ValueError as e:
+                    st.error(str(e))
+                else:
+                    b1, b2 = st.columns(2)
+                    b1.metric("I_zz (kg·m²)",
+                              _fmt(bf.inertia, bf.inertia_err))
+                    b2.metric("Radio de giro k (cm)",
+                              f"{bf.gyration_radius * 100:.3g}")
+                    if barra_cm > 0:
+                        k_teo = bar_gyration_radius(barra_cm / 100.0)
+                        dif = abs(bf.gyration_radius - k_teo) / k_teo * 100.0
+                        st.markdown(
+                            f"Barra uniforme de L = {barra_cm:.1f} cm: "
+                            f"k teórico = L/√12 = **{k_teo * 100:.3g} cm**, "
+                            f"medido = **{bf.gyration_radius * 100:.3g} cm** "
+                            f"→ diferencia de **{dif:.0f} %**."
+                        )
+                        if dif > 25:
+                            st.warning(
+                                "Diferencia grande. Las causas típicas son "
+                                "haber usado el largo de la barra en vez de d "
+                                "(da k unas 3 veces mayor), haber contado los "
+                                "cruces en ambos sentidos (da k a la mitad), o "
+                                "hilos de largo desigual."
+                            )
 
     elif wf == "linear_speed":
         axis_label = st.selectbox("Eje de movimiento", ["x (m)", "y (m)"])
