@@ -7,6 +7,13 @@ lectura de meseta (velocidad terminal), ajuste lineal por tramos
 (colisiones), período por cruces por cero y geometría de elipse
 (péndulo cónico).
 
+Para los laboratorios 2 hay utilidades de control por video, que
+verifican en el acto el orden de magnitud del resultado:
+``drag_from_terminal_velocity`` (FIS101: C_d de una sola caída) y
+``bifilar_inertia`` (FIS201: I_zz de un solo largo de hilo). El
+resultado que se informa en ambos casos es el del ajuste lineal del
+grupo sobre todas las configuraciones, que se hace fuera de la app.
+
 Este módulo es independiente de Streamlit.
 """
 
@@ -17,6 +24,23 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 from scipy.optimize import curve_fit
+
+
+# ==========================================================================
+# Constantes de las guías de laboratorio (Santiago)
+# ==========================================================================
+#: Aceleración de gravedad local adoptada en las guías 2026 (m/s²).
+G_SANTIAGO = 9.794
+
+#: Densidad del aire en Santiago, 570 m de altitud y 20 °C (kg/m³).
+RHO_AIRE_SANTIAGO = 1.12
+
+#: Viscosidad dinámica del aire (Pa·s).
+MU_AIRE = 1.81e-5
+
+#: Rango de C_d considerado consistente con la referencia en FIS101 Lab 2.
+CD_REFERENCIA = 1.3
+CD_RANGO_ACEPTABLE = (1.1, 1.4)
 
 
 # ==========================================================================
@@ -194,20 +218,291 @@ def acceleration_from_quadratic(fit: FitResult) -> Tuple[float, float]:
     return 2.0 * a2, 2.0 * s_a2
 
 
+@dataclass
+class PlateauResult:
+    """Lectura de la meseta de una señal que satura (velocidad terminal)."""
+
+    value: float          # promedio del tramo
+    sigma: float          # desviación estándar muestral del tramo
+    n: int                # puntos promediados
+    t_start: float
+    t_end: float
+    slope: float          # pendiente del tramo (unidades de la señal / s)
+    slope_err: float
+
+    @property
+    def relative_drift(self) -> float:
+        """Cambio relativo de la señal a lo largo del tramo, según la recta ajustada."""
+        if not np.isfinite(self.slope) or self.value == 0:
+            return float("nan")
+        return float(abs(self.slope) * (self.t_end - self.t_start) / abs(self.value))
+
+    @property
+    def is_flat(self) -> bool:
+        """``True`` si el tramo es meseta: la señal ya no crece de forma sistemática.
+
+        Se aplican dos criterios, y basta con que se cumpla uno:
+
+        * **Físico**: la señal cambia menos de un 1 % a lo largo del tramo.
+          Manda sobre el estadístico porque una deriva despreciable no deja de
+          serlo por estar bien medida.
+        * **Estadístico**: la pendiente es compatible con cero a 2σ.
+
+        Sin el criterio físico, datos muy limpios darían siempre "no es meseta":
+        con ruido casi nulo, ``slope_err`` se achica más rápido que la deriva
+        residual y cualquier curvatura ínfima resulta significativa.
+        """
+        drift = self.relative_drift
+        if np.isfinite(drift) and drift < 0.01:
+            return True
+        if not np.isfinite(self.slope) or not np.isfinite(self.slope_err):
+            return True
+        return abs(self.slope) <= 2.0 * self.slope_err
+
+
+def read_plateau(
+    t: np.ndarray,
+    v: np.ndarray,
+    last_n: Optional[int] = None,
+    t_min: Optional[float] = None,
+    t_max: Optional[float] = None,
+) -> PlateauResult:
+    """Lee la meseta de ``v(t)`` promediando un tramo final.
+
+    El tramo se elige de dos formas excluyentes: con ``last_n`` (los últimos
+    N puntos, como pide la guía del Lab 2 de FIS101: 8 a 15 cuadros) o con un
+    intervalo de tiempo ``[t_min, t_max]``, útil cuando el video sigue después
+    de que el cuerpo toca el suelo.
+
+    Además del promedio y su desviación estándar, ajusta una recta al tramo:
+    su pendiente permite comprobar que efectivamente es meseta y no un punto
+    intermedio de la curva.
+    """
+    t = np.asarray(t, dtype=float)
+    v = np.asarray(v, dtype=float)
+    mask = np.isfinite(t) & np.isfinite(v)
+    t, v = t[mask], v[mask]
+    if len(t) == 0:
+        nan = float("nan")
+        return PlateauResult(nan, nan, 0, nan, nan, nan, nan)
+
+    if t_min is not None or t_max is not None:
+        lo = -np.inf if t_min is None else float(t_min)
+        hi = np.inf if t_max is None else float(t_max)
+        sel = (t >= lo) & (t <= hi)
+        if not sel.any():
+            sel = np.zeros(len(t), dtype=bool)
+            sel[-1] = True
+    else:
+        n = len(t) if last_n is None else int(max(1, min(last_n, len(t))))
+        sel = np.zeros(len(t), dtype=bool)
+        sel[-n:] = True
+
+    ts, vs = t[sel], v[sel]
+    media = float(np.mean(vs))
+    sigma = float(np.std(vs, ddof=1)) if len(vs) > 1 else 0.0
+
+    # Pendiente del tramo por mínimos cuadrados, con su error estándar.
+    # Se calcula a mano en vez de con curve_fit porque un tramo perfectamente
+    # plano tiene residuos nulos y la covarianza queda indefinida (OptimizeWarning).
+    slope = slope_err = float("nan")
+    if len(vs) >= 3 and np.ptp(ts) > 0:
+        dt = ts - np.mean(ts)
+        s_xx = float(np.sum(dt**2))
+        slope = float(np.sum(dt * (vs - np.mean(vs))) / s_xx)
+        residuos = vs - (np.mean(vs) + slope * dt)
+        var_res = float(np.sum(residuos**2) / (len(vs) - 2))
+        slope_err = float(np.sqrt(var_res / s_xx))
+
+    return PlateauResult(
+        value=media,
+        sigma=sigma,
+        n=int(len(vs)),
+        t_start=float(ts[0]),
+        t_end=float(ts[-1]),
+        slope=float(slope),
+        slope_err=float(slope_err),
+    )
+
+
 def plateau_value(
     t: np.ndarray, v: np.ndarray, last_n: int = 5
 ) -> Tuple[float, float]:
     """Promedia los últimos ``last_n`` puntos de una señal (p. ej. velocidad terminal).
 
-    Devuelve (media, desviación estándar). Útil cuando v(t) satura en una meseta.
+    Devuelve (media, desviación estándar). Envoltorio simple sobre
+    :func:`read_plateau`, que entrega además el diagnóstico del tramo.
     """
-    v = np.asarray(v, dtype=float)
-    v = v[np.isfinite(v)]
-    if len(v) == 0:
-        return float("nan"), float("nan")
-    last_n = int(max(1, min(last_n, len(v))))
-    seg = v[-last_n:]
-    return float(np.mean(seg)), float(np.std(seg, ddof=1) if len(seg) > 1 else 0.0)
+    res = read_plateau(t, v, last_n=last_n)
+    return res.value, res.sigma
+
+
+# --------------------------------------------------------------------------
+# FIS101 Lab 2 · arrastre aerodinámico y velocidad terminal
+# --------------------------------------------------------------------------
+def frontal_area(diameter: float) -> float:
+    """Área frontal de un cuerpo circular: ``A = π D² / 4`` (D en metros)."""
+    d = float(diameter)
+    if d <= 0:
+        raise ValueError("El diámetro debe ser positivo.")
+    return float(np.pi * d**2 / 4.0)
+
+
+def reynolds_number(
+    v: float,
+    length: float,
+    rho: float = RHO_AIRE_SANTIAGO,
+    mu: float = MU_AIRE,
+) -> float:
+    """Número de Reynolds ``Re = ρ v D / μ`` (adimensional).
+
+    Sirve para justificar el régimen: el arrastre lineal exige ``Re ≲ 1`` y el
+    cuadrático domina desde ``Re ~ 10³``.
+    """
+    if mu <= 0:
+        raise ValueError("La viscosidad debe ser positiva.")
+    return float(rho * abs(v) * abs(length) / mu)
+
+
+@dataclass
+class DragResult:
+    """Coeficiente de arrastre estimado a partir de una sola caída."""
+
+    c_d: float
+    c_d_err: float
+    area: float
+    reynolds: float
+
+    @property
+    def in_reference_range(self) -> bool:
+        """``True`` si ``C_d`` cae en el rango de referencia de la guía."""
+        lo, hi = CD_RANGO_ACEPTABLE
+        return bool(np.isfinite(self.c_d) and lo <= self.c_d <= hi)
+
+    @property
+    def percent_difference(self) -> float:
+        """Diferencia porcentual respecto del valor tabulado de referencia."""
+        return float(abs(self.c_d - CD_REFERENCIA) / CD_REFERENCIA * 100.0)
+
+
+def drag_from_terminal_velocity(
+    v_t: float,
+    mass: float,
+    diameter: float,
+    v_t_err: float = 0.0,
+    rho: float = RHO_AIRE_SANTIAGO,
+    g: float = G_SANTIAGO,
+    mu: float = MU_AIRE,
+) -> DragResult:
+    """Coeficiente de arrastre de **una sola caída**, como control de magnitud.
+
+    Invierte ``v_t = sqrt(2 m g / (ρ C_d A))`` con ``A = π D² / 4``:
+
+    .. math:: C_d = \\frac{2\\,m\\,g}{\\rho\\,A\\,v_t^{2}}
+
+    Como ``C_d ∝ v_t^{-2}``, la incertidumbre relativa se duplica:
+    ``ΔC_d/C_d = 2·Δv_t/v_t``.
+
+    Este **no** es el resultado que se informa: la guía pide el ajuste lineal
+    de ``v_t²`` contra ``m`` sobre las cinco configuraciones del bloque A. Sirve
+    para detectar en el momento un problema de calibración o de lectura de la
+    meseta, comparando con el rango 1,1–1,4.
+    """
+    v_t = float(v_t)
+    mass = float(mass)
+    if v_t <= 0:
+        raise ValueError("La velocidad terminal debe ser positiva.")
+    if mass <= 0:
+        raise ValueError("La masa debe ser positiva.")
+    area = frontal_area(diameter)
+    c_d = 2.0 * mass * g / (rho * area * v_t**2)
+    c_d_err = 2.0 * c_d * abs(v_t_err) / v_t
+    return DragResult(
+        c_d=float(c_d),
+        c_d_err=float(c_d_err),
+        area=area,
+        reynolds=reynolds_number(v_t, diameter, rho=rho, mu=mu),
+    )
+
+
+# --------------------------------------------------------------------------
+# FIS201 Lab 2 · péndulo bifilar y momento de inercia
+# --------------------------------------------------------------------------
+def bar_gyration_radius(length: float) -> float:
+    """Radio de giro teórico de una barra uniforme: ``k = L / √12``."""
+    return float(abs(length) / np.sqrt(12.0))
+
+
+@dataclass
+class BifilarResult:
+    """Momento de inercia estimado a partir de un solo largo de hilo."""
+
+    inertia: float          # I_zz (kg·m²)
+    inertia_err: float
+    gyration_radius: float  # k = sqrt(I/M) (m)
+
+
+def bifilar_inertia(
+    period: float,
+    mass: float,
+    half_separation: float,
+    wire_length: float,
+    period_err: float = 0.0,
+    g: float = G_SANTIAGO,
+) -> BifilarResult:
+    """Momento de inercia de **un solo largo de hilo**, como control de magnitud.
+
+    Invierte el período del péndulo bifilar
+    ``T = 2π sqrt(I H / (M g d²))``:
+
+    .. math:: I_{zz} = \\frac{T^{2} M g d^{2}}{4\\pi^{2} H}
+
+    ``half_separation`` es ``d``, la **semiseparación entre los hilos**, no el
+    largo del cuerpo: en el montaje de la guía los hilos se amarran a 5 cm
+    sobre una barra de 15 cm, y confundir ambos da un momento de inercia nueve
+    veces mayor. ``wire_length`` es ``H``, el largo de los hilos.
+
+    Como ``I ∝ T²``, la incertidumbre relativa se duplica:
+    ``ΔI/I = 2·ΔT/T``.
+
+    El resultado que se informa es el del ajuste de ``T²`` contra ``H`` sobre
+    los seis largos; esto sirve para verificar el orden de magnitud en el acto.
+    """
+    period = float(period)
+    mass = float(mass)
+    d = float(half_separation)
+    H = float(wire_length)
+    if period <= 0:
+        raise ValueError("El período debe ser positivo.")
+    if mass <= 0:
+        raise ValueError("La masa debe ser positiva.")
+    if d <= 0:
+        raise ValueError("La semiseparación de los hilos debe ser positiva.")
+    if H <= 0:
+        raise ValueError("El largo de los hilos debe ser positivo.")
+
+    inertia = period**2 * mass * g * d**2 / (4.0 * np.pi**2 * H)
+    inertia_err = 2.0 * inertia * abs(period_err) / period
+    return BifilarResult(
+        inertia=float(inertia),
+        inertia_err=float(inertia_err),
+        gyration_radius=float(np.sqrt(inertia / mass)),
+    )
+
+
+def period_timing_uncertainty(
+    fps: float, n_cycles: int, frame_error: float = 2.0
+) -> float:
+    """Incertidumbre de cronometraje del período, en segundos.
+
+    El error de identificar cada cruce es de un par de cuadros y es el mismo se
+    midan uno o diez períodos; al repartirlo entre ``n_cycles`` ciclos se
+    reduce en esa proporción. Por eso la guía exige contar diez oscilaciones y
+    no una.
+    """
+    if fps <= 0 or n_cycles <= 0:
+        return float("nan")
+    return float(frame_error / fps / n_cycles)
 
 
 def piecewise_linear_fit(
