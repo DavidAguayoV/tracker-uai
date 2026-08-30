@@ -63,14 +63,21 @@ PRESETS: List[Preset] = [
     Preset(
         key="fis101_lab2_terminal",
         curso="FIS101",
-        nombre="Lab 2 — Velocidad terminal (arrastre)",
+        nombre="Lab 2 — Arrastre aerodinámico y velocidad terminal",
         workflow="terminal_velocity",
-        descripcion="Lee la meseta de v(t): promedio de los últimos N puntos.",
+        descripcion="Lee v_t como el promedio de la meseta de v(t) (8 a 15 "
+        "cuadros) y controla el orden de magnitud de C_d.",
         signal="speed",
         model="terminal_velocity",
         param_label="v_t (m/s)",
-        ayuda="Trackea la caída vertical del filtro de café. v(t) satura hacia "
-        "una meseta; promedia el tramo donde ya no crece.",
+        ayuda="Trackea la caída del filtro de café desde la suelta. v(t) crece "
+        "y satura: promedia el tramo final donde ya no crece de forma "
+        "sistemática, nunca un cuadro aislado ni el máximo. Una caída = una "
+        "repetición; hay 7 configuraciones (A1–A5 varían la masa a diámetro "
+        "fijo, B1–B2 varían el diámetro) con 3 repeticiones cada una. El "
+        "resultado que se informa, C_d, sale del ajuste de v_t² contra m sobre "
+        "el bloque A, que se hace en Excel con los promedios de las tres "
+        "repeticiones.",
     ),
     Preset(
         key="fis101_lab3_colisiones",
@@ -99,14 +106,21 @@ PRESETS: List[Preset] = [
     Preset(
         key="fis201_lab2_bifilar",
         curso="FIS201",
-        nombre="Lab 2 — Péndulo bifilar (torsión)",
+        nombre="Lab 2 — Péndulo bifilar (momento de inercia)",
         workflow="period_zero",
-        descripcion="Período por cruces por cero (≈10 oscilaciones).",
+        descripcion="Período de torsión por cruces por el equilibrio en el "
+        "mismo sentido (10 oscilaciones) y control de magnitud de I_zz.",
         signal="x_m",
         model="sine",
         param_label="T (s)",
-        ayuda="Trackea un punto de la barra en vista cenital; su oscilación "
-        "sirve para contar cruces. El período se obtiene contando ciclos.",
+        ayuda="Trackea un punto de la barra en vista cenital: su oscilación es "
+        "la señal de torsión. Los cruces se cuentan siempre en el MISMO "
+        "sentido de giro; contarlos todos da medio período y un momento de "
+        "inercia cuatro veces menor. Filma al menos 12 oscilaciones para poder "
+        "medir sobre 10. El resultado que se informa, I_zz, sale del ajuste de "
+        "T² contra H sobre los seis largos de hilo, que se hace en Excel. Ojo: "
+        "en las fórmulas entra d, la SEMISEPARACIÓN de los hilos (2d = 5 cm), "
+        "no el largo de la barra (15 cm).",
     ),
     Preset(
         key="fis301_lab3_lorentz",
