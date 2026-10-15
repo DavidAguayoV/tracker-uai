@@ -19,7 +19,9 @@ Hecho en **Python + Streamlit + OpenCV**; funciona en **Windows, macOS y Linux**
 - 🎥 Navegación por frames con saltos ±1/±5/±10 y selección de frame exacto.
 - 📏 Calibración píxel→metro con **ejes de orientación libre** (plano inclinado).
 - 🎯 **Tracking manual y automático** (plantilla, color HSV y CSRT si está
-  disponible), con revisión y corrección frame a frame.
+  disponible), con revisión y corrección frame a frame, y **varios objetos
+  por video** con seguimiento robusto (dos carros con la misma marca, un
+  trazador de 2 mm entre burbujas).
 - 📈 Cinemática (posición, velocidad, aceleración, trayectoria) con suavizado
   Savitzky-Golay.
 - 🧮 **Ajuste de modelos** con incertidumbres y R², y **presets por laboratorio**.
@@ -27,7 +29,11 @@ Hecho en **Python + Streamlit + OpenCV**; funciona en **Windows, macOS y Linux**
   de `g` (plantillas FIS101/FIS201).
 - 📐 **Medición sobre foto**: distancias, ángulos (con eje horizontal
   redefinible) y áreas; exporta la imagen anotada.
-- 💾 Exportación de datos (CSV) y figuras (PNG/SVG/ZIP).
+- 🧪 **Laboratorios 3**: colisiones de FIS101 (v1i…v2f, p, K, C_R) y bombeo
+  MHD de FIS301 (rapidez y radio de la órbita), con **modo por lotes** para
+  los 24 videos y **análisis de grupo**.
+- 💾 Exportación de datos (CSV con «;» y coma decimal, para Excel en español)
+  y figuras (PNG/SVG/ZIP).
 - 🎨 Tema claro/oscuro y tipografía profesional.
 
 ---
@@ -213,10 +219,18 @@ del péndulo en FIS201.
 | — | Genérico / manual | Ajuste libre de cualquier modelo |
 | FIS101 | Lab 1 · Gravedad en plano inclinado | Aceleración `a` (parábola x(t) **o** recta v(t)) |
 | FIS101 | Lab 2 · Arrastre y velocidad terminal | `v_t` (meseta de v(t)) + control de `C_d` |
-| FIS101 | Lab 3 · Colisiones | `v_i`, `v_f` (recta por tramos) |
+| FIS101 | Lab 3 · Colisiones | `v1i`, `v2i`, `v1f`, `v2f` de dos carros + `p`, `Δp`, `K`, `C_R` |
 | FIS201 | Lab 1 · Péndulo cónico (Kepler) | `T`, semiejes, focos, áreas barridas |
 | FIS201 | Lab 2 · Péndulo bifilar | `T` (cruces por cero) + control de `I_zz` |
-| FIS301 | Lab 3 · Fuerza de Lorentz / MHD | Rapidez `v` del flujo |
+| FIS301 | Lab 3 · Fuerza de Lorentz / MHD | `v`, `s_v` y radio de la órbita del trazador; modo por lotes |
+
+#### Laboratorios 3
+
+El manual (`MANUAL_DE_USO.md`, sección 6) trae los pasos de cada uno, del video
+a las tablas de registro de la guía. A diferencia de los Lab 2, la app incluye
+una etapa de **análisis de grupo** (promedios por bloque en FIS101, ajuste
+`v = kI` por el origen en FIS301) que entrega números y gráficos sin redactar
+conclusiones.
 
 #### Alcance de los presets de Lab 2
 
@@ -276,6 +290,12 @@ Cubren `core/kinematics.py` y `core/fitting.py` (un movimiento sintético —MRU
 tiro parabólico, colisión, péndulo cónico— se ajusta con el error esperado), la
 selección del objeto por clic y las figuras exportadas.
 
+Los Laboratorios 3 se verifican con **videos sintéticos de resultado conocido**
+(`tests/sinteticos.py`, generados en cada corrida): dos carros con la misma
+marca, choque elástico e inelástico, y un trazador en órbita con ruido,
+burbujas y cuadros perdidos (tolerancia 2 %). `python tests/verificar_lab3.py`
+imprime la tabla de valores esperados frente a obtenidos.
+
 `tests/test_flujo_app.py` es una **prueba de integración de la interfaz**: usa
 `streamlit.testing.AppTest` para ejecutar `app.py` headless y verificar que las
 seis etapas se dibujen sin excepciones y que los botones **Continuar** lleven
@@ -305,8 +325,15 @@ tracker-uai/
 │   ├── calibration.py           # escala px→m, origen, ejes rotados
 │   ├── tracking.py              # tabla de puntos
 │   ├── autotrack.py             # tracking automático (plantilla/color/CSRT)
+│   ├── seguimiento.py           # seguimiento robusto (varios objetos, trazador)
 │   ├── kinematics.py            # derivadas + Savitzky-Golay
-│   └── fitting.py               # curve_fit, elipse, utilidades de presets
+│   ├── fitting.py               # curve_fit, elipse, utilidades de presets
+│   ├── formato.py               # coma decimal, 1 cifra significativa, CSV «;»
+│   ├── colisiones.py            # FIS101 Lab 3: choque, tramos, p, K, C_R
+│   ├── orbita.py                # FIS301 Lab 3: círculo, rapidez, tramo estable
+│   ├── lote.py                  # tablas por video de los Lab 3
+│   ├── procesar.py              # un video de FIS301 de punta a punta (lote)
+│   └── grupo.py                 # análisis de grupo (por bloque, v = kI)
 ├── models/
 │   └── experiment_presets.py    # presets por laboratorio
 ├── manual/                      # fuente LaTeX del manual (apunte UAI)
@@ -317,7 +344,12 @@ tracker-uai/
     ├── test_kinematics.py
     ├── test_fitting.py
     ├── test_seleccion_y_export.py  # recuadro por clic, figuras exportadas
-    └── test_flujo_app.py           # integración de la UI (streamlit AppTest)
+    ├── test_flujo_app.py           # integración de la UI (streamlit AppTest)
+    ├── sinteticos.py               # videos sintéticos de los Lab 3
+    ├── test_lab3_core.py           # lógica de los Lab 3 sin video
+    ├── test_lab3_videos.py         # video sintético → resultado (2 %)
+    ├── test_flujo_lab3.py          # integración AppTest de los Lab 3
+    └── verificar_lab3.py           # tabla esperado vs. obtenido
 ```
 
 ---
@@ -325,8 +357,8 @@ tracker-uai/
 ## Limitaciones de esta versión y pendientes (v2)
 
 - No corrige distorsión de lente ni perspectiva.
-- **Multi-objeto simultáneo** no soportado (para colisiones, un carro por
-  sesión). Marcado como TODO en el código.
+- Los objetos se siguen **uno a la vez** (no en una sola pasada); el segundo
+  descarta las detecciones que caen sobre el primero.
 - Sin cuentas de usuario ni persistencia entre sesiones: cada análisis se
   exporta y listo.
 - Para videos muy largos (>2000 frames), la precarga se limita; conviene

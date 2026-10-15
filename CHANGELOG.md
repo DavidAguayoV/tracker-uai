@@ -2,6 +2,60 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
 
+## [1.3] — 2026-10-15
+
+Soporte completo de los **Laboratorios 3** de FIS101 (colisiones entre dos
+carros) y FIS301 (bombeo MHD), alineado con las guías v3 (revisión 2). El
+detalle de la auditoría, la verificación y lo que queda por decidir está en
+`CAMBIOS_v1.3.md`.
+
+### Agregado
+
+- **Selector de laboratorio** en la barra lateral (el mismo preset del
+  Paso 5): ajusta el seguimiento y el análisis a la guía elegida.
+- **Varios objetos por video** (hasta 4): objeto activo, progreso por objeto y
+  CSV con todos. Con varios objetos o en un Lab 3 se activa un **seguimiento
+  robusto** (`core/seguimiento.py`): predicción, compuerta de salto, exclusión
+  del otro objeto, recuperación, color con tono circular y plantilla en color
+  con precisión subpíxel. Los Labs 1 y 2 siguen usando los métodos de siempre.
+- **Cámara fija:** la calibración (y la mina de FIS301) se conserva al subir
+  el video siguiente, salvo que cambie la resolución.
+- **FIS101 · Lab 3** (Paso 5): instante del choque, tramos de velocidad
+  constante (automáticos o a mano), v1i, v2i, v1f y v2f con signo según la
+  guía e incertidumbre; con las masas, p_i, p_f, Δp, Δp/p_i, K_i, K_f y C_R;
+  avisos de segundo choque, de tramos cortos y de p_i casi nulo; tabla de
+  ensayos exportable.
+- **FIS301 · Lab 3** (Paso 5): rapidez cuadro a cuadro, tramo de giro estable
+  sin el arranque, v y s_v, radio de la órbita (círculo ajustado), distancia
+  a la mina y control ω·R.
+- Etapa **🌀 Lote FIS301**: los 24 videos con una calibración, bloque y voltaje
+  leídos del nombre, I editable, tabla resumen y ZIP con los datos crudos.
+- Etapa **📈 Análisis de grupo (Lab 3)**: FIS101, promedio y desviación
+  estándar de Δp/p_i y C_R por bloque; FIS301, ajuste v = kI por el origen por
+  distancia (k, error estándar, R²) y v(V) sin ajuste. Sin conclusiones.
+- `core/formato.py`: coma decimal, incertidumbre a una cifra significativa.
+
+### Cambiado
+
+- **El CSV exportado usa «;» y coma decimal**, como espera Excel en español.
+  Antes, separado por comas, se abría con todo en la primera columna.
+- Los presets de Lab 3 dejan de ser los provisorios de la v1 (un carro por
+  sesión; recta en x(t) para el trazador, que ahora gira alrededor de una
+  mina).
+
+### Corregido
+
+- **Tiempos de la precarga de video corridos un cuadro.** Los frames 1 y 2
+  quedaban con el mismo t: velocidad infinita al derivar, que el resumen del
+  Paso 4 descartaba en silencio. Las posiciones no cambian.
+
+### Notas
+
+- La suite pasó de 69 a 138 tests, incluidos vídeos sintéticos con resultado
+  conocido y pruebas AppTest de ambos flujos (con subida de archivos).
+- `python tests/verificar_lab3.py` imprime la tabla de valores esperados
+  frente a obtenidos.
+
 ## [1.2] — 2026-08-30
 
 Revisión completa de la interfaz, centrada en que un estudiante que abre el

@@ -56,10 +56,73 @@ Si aun asi aparece la pantalla azul "Windows protegio tu PC":
 ========================================
 
   - Sube tu video en la barra lateral.
+  - En "Laboratorio" (barra lateral) elige el tuyo.
   - Avanza por las etapas: 1 Video -> ... -> 6 Exportar.
-  - Al final, descarga el CSV y los graficos.
+  - Al final, descarga el CSV y los graficos. El CSV usa ";" y coma
+    decimal: se abre directo en Excel en espanol.
 
 Para CERRAR el programa: cierra la ventana negra (terminal).
+
+
+========================================
+  LAB 3 de FIS101: colisiones (momentum)
+========================================
+
+Videos: ensayo01.mp4 ... ensayo12.mp4 (como dice la guia).
+
+  1. Laboratorio: "FIS101 - Lab 3 - Colisiones". Aparecen
+     Carro 1 y Carro 2.
+  2. Sube ensayo01.mp4. Paso 1: tramo con los dos carros rodando
+     libres, hasta poco despues del choque.
+  3. Paso 2: calibra con la regla UNA vez (los otros 11 videos
+     reutilizan la calibracion: "camara fija").
+  4. Paso 3: elige Carro 1, clic en su marca, Ejecutar.
+     Luego elige Carro 2, clic en su marca, Ejecutar.
+  5. Paso 5: copia v1i, v2i, v1f, v2f (con signo) en la tabla
+     "Velocidades con signo". El signo + es el sentido en que parte
+     el carro 1 (la app lo corrige sola si hace falta).
+  6. Escribe m1 y m2 en gramos (bloques C y D: m2 = carro 2 + masa
+     adicional). Copia p_i, p_f, dp/p_i, K_i, K_f y C_R en la tabla
+     "Calculos derivados por ensayo". Anota tambien dp: en B y D
+     p_i casi vale cero y dp/p_i se dispara.
+  7. "Guardar este ensayo en la tabla". En el Paso 6 descarga el CSV
+     del ensayo (datos crudos de los dos carros).
+  8. Repite con los 12 videos y descarga la tabla de ensayos (CSV).
+  9. "Analisis de grupo (Lab 3)": promedio y desviacion estandar de
+     dp/p_i y C_R por bloque (A, B, C, D por separado).
+
+Si la app avisa de un "segundo choque" (contra un tope) o de un
+tramo con menos de 8 puntos, ajusta los tramos a mano en el Paso 5.
+
+
+========================================
+  LAB 3 de FIS301: bombeo MHD (24 videos)
+========================================
+
+Videos: D0_10V.mp4 ... D2_24V.mp4 (bloque y voltaje en el nombre).
+La corriente I la anotas en la sesion, desde la fuente.
+
+  1. Laboratorio: "FIS301 - Lab 3 - Fuerza de Lorentz".
+  2. Sube UNO de los videos y calibralo en el Paso 2 (regla en el
+     plano del trazador). Deja marcada "camara fija".
+  3. Ve a la etapa "Lote FIS301 (24 videos)" y sube los videos
+     (todos, o un bloque a la vez).
+  4. En "Color del trazador y posicion de la mina": clic sobre el
+     trazador; luego elige "la mina" y clic sobre la mina.
+  5. "Procesar". Por cada video salen v (rapidez media en el giro
+     estable, mm/s), s_v (su desviacion estandar cuadro a cuadro),
+     u_v (incertidumbre de v) y r (radio de la orbita, mm).
+  6. Escribe I (mA) de cada video en la tabla.
+  7. Copia v en la tabla "Registro de los tres bloques" de la guia.
+  8. Descarga "Resumen + datos crudos (ZIP)": se entrega con el
+     informe.
+  9. "Analisis de grupo (Lab 3)": ajuste v = k*I por el origen para
+     cada distancia (k, error estandar, R2) y los graficos v(I) y
+     v(V).
+
+Si la app avisa que el radio de un video es distinto al del resto
+del bloque, ese punto probablemente cae fuera de la recta: revisa
+el video.
 
 
 ========================================

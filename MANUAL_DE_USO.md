@@ -109,8 +109,9 @@ presiona `Ctrl + C` en ella (macOS/Linux).
 
 ## 5. Guía de uso
 
-La barra lateral izquierda tiene el **selector de etapas** y la **carga del
-video**. Hay dos grandes usos:
+La barra lateral izquierda tiene la **carga del video**, el selector de
+**Laboratorio** (ajusta el seguimiento y el análisis a tu guía) y el
+**selector de etapas**. Hay dos grandes usos:
 
 - **Análisis de video** (etapas 1 a 6): medir posiciones en un video y obtener
   velocidad, aceleración, ajustes, etc.
@@ -144,6 +145,9 @@ progreso. Igual puedes saltar libremente a cualquier paso cuando quieras.
    video, revisa la distancia y su unidad.
 5. (Opcional) Activa **"Mi eje X no es horizontal"** si trabajas en un plano
    inclinado, y marca la dirección +X.
+6. Si grabaste varios videos **sin mover el celular**, marca **"Cámara fija:
+   mantener esta calibración"**: al subir el video siguiente no hay que volver
+   a calibrar. En los Laboratorios 3 viene marcado.
 
 **Paso 3 · Tracking** — seguir el objeto
 - Viene en **Automático**, que es lo que conviene casi siempre:
@@ -156,6 +160,12 @@ progreso. Igual puedes saltar libremente a cualquier paso cuando quieras.
 - Al terminar, el programa avisa si quedaron **frames sin detección**.
 - **Manual:** si el automático se pierde, haz clic sobre el objeto en cada
   frame; el video avanza solo.
+- **Varios objetos:** en *"Seguir más de un objeto en este video"* agregas
+  otro objeto (hasta 4). Eliges cuál sigues con el selector **Objeto activo** y
+  lo sigues igual que siempre. Con más de un objeto (o en un Laboratorio 3) se
+  activa el **seguimiento robusto**: predice dónde estará el objeto, descarta
+  lo que cae sobre otro objeto ya seguido y deja **sin punto** los cuadros en
+  que no lo ve, en vez de inventar una posición.
 - **Corregir:** en los desplegables puedes ver todas las detecciones
   superpuestas y corregir puntos frame por frame. También puedes editar la
   **tabla** de datos directamente.
@@ -170,14 +180,17 @@ progreso. Igual puedes saltar libremente a cualquier paso cuando quieras.
   aceleración). Las figuras que exportes usarán esa misma señal.
 
 **Paso 5 · Ajuste**
-- Elige un **preset** según tu laboratorio (gravedad, arrastre y velocidad
-  terminal, colisiones, péndulo cónico, bifilar, MHD) o el modo **genérico**.
+- El **preset** es el laboratorio elegido en la barra lateral (gravedad,
+  arrastre y velocidad terminal, colisiones, péndulo cónico, bifilar, MHD) o
+  el modo **genérico**; puedes cambiarlo aquí también.
 - El programa entrega los parámetros con su **incertidumbre** y el **R²**.
 
 **Paso 6 · Exportar**
 - Las figuras **se ven en pantalla** y cada una tiene su botón de descarga.
 - También puedes bajar el **CSV** con todos los datos, o un **ZIP** con todo
-  junto.
+  junto. Con varios objetos, el CSV trae todos (una fila por frame).
+- El CSV usa **«;» como separador y coma decimal**: se abre directo en Excel
+  configurado en español.
 
 ### 📊 Gráficos (datos manuales) — sin video
 
@@ -195,7 +208,110 @@ en el péndulo simple.
 
 ---
 
-## 6. Consejos para grabar los videos
+## 6. Laboratorios 3
+
+Las magnitudes llevan los mismos nombres que en las guías (v1i, v2i, v1f, v2f,
+p_i, p_f, Δp, K_i, K_f, C_R; V, I, v, s_v). En pantalla y en los CSV los
+números van con **coma decimal**, y cada resultado con su **incertidumbre
+redondeada a una cifra significativa**: la desviación estándar de los puntos
+o la resolución, la mayor, sin propagación formal.
+
+### 6.1 FIS101 · Lab 3 — Conservación del momentum lineal
+
+Nombra los videos como dice la guía: `ensayo01.mp4` … `ensayo12.mp4`. Del
+nombre la app saca el número de ensayo y el bloque (A: 1–3, B: 4–6, C: 7–9,
+D: 10–12).
+
+1. En la barra lateral elige **Laboratorio → FIS101 · Lab 3 — Colisiones
+   (momentum)**. Aparecen dos objetos, **Carro 1** y **Carro 2**, y queda
+   activada la cámara fija.
+2. Sube `ensayo01.mp4`. **Paso 1:** elige el tramo desde que los dos carros
+   ruedan libres (sin manos) hasta poco después del choque. Si un carro llega
+   a un tope, deja ese rebote fuera del tramo si puedes.
+3. **Paso 2:** calibra con la regla que está sobre el riel (una sola vez: los
+   otros once videos usan la misma calibración). Si el riel no queda
+   horizontal en la imagen, activa el eje X rotado y marca +X a lo largo del
+   riel.
+4. **Paso 3:** con **Carro 1** activo, haz clic sobre su marca de color y
+   pulsa **Ejecutar seguimiento**. Cambia a **Carro 2**, haz clic sobre su
+   marca y ejecuta de nuevo. Aunque las dos marcas sean del mismo color, el
+   segundo seguimiento descarta lo que cae sobre el carro 1.
+5. **Paso 5:** arriba están **v1i, v2i, v1f y v2f**, con signo e
+   incertidumbre. Van a la tabla **«Velocidades con signo»** de la guía.
+   - El eje x es paralelo al riel y **positivo en el sentido en que parte el
+     carro 1**. Si en el video el carro 1 avanza hacia la izquierda, la app
+     invierte el signo sola y lo avisa. Los rebotes salen negativos.
+   - El gráfico muestra la velocidad de los dos carros, el instante del choque
+     y los **tramos promediados** (sombreados). La app los propone sola,
+     descartando la interacción magnética y dos puntos más a cada lado del
+     salto. Con **"Ajustar a mano los límites de los tramos"** eliges otros.
+   - Avisa, sin bloquear, si hay un **segundo choque** (contra un tope) dentro
+     de un tramo o si un tramo tiene **menos de 8 puntos**. Si el carro 2 parte
+     quieto (bloques A y C), v2i sale ≈ 0: es lo esperado.
+6. Escribe **m1 y m2** en gramos, de la tabla **«Masas medidas»** (en C y D,
+   m2 es el carro 2 **más** la masa adicional). Aparecen **p_i, p_f, Δp,
+   Δp/p_i, K_i, K_f y C_R**: van a la tabla **«Cálculos derivados por
+   ensayo»**. Anota también **Δp**: en los bloques B y D p_i casi se anula y
+   Δp/p_i se dispara aunque Δp sea pequeño (la app lo avisa).
+7. Revisa el número de ensayo y el bloque y pulsa **"Guardar este ensayo en la
+   tabla"**. En el **Paso 6** descarga el CSV del ensayo: trae las posiciones
+   y velocidades de los dos carros (son los **datos crudos** que se entregan).
+8. Repite los pasos 2 a 7 con los doce videos. Al final, descarga la **tabla de
+   ensayos (CSV)**. Si cierras la app, súbela de nuevo para seguir otro día.
+9. Etapa **📈 Análisis de grupo → FIS101**: promedio y desviación estándar
+   (1/(n−1)) de **Δp/p_i** y **C_R** por bloque, sin mezclar bloques, con Δp
+   al lado. Es lo que pide la sección «Valor de cada bloque» de la guía. La
+   pestaña no saca conclusiones: eso va en el informe.
+
+### 6.2 FIS301 · Lab 3 — Fuerza de Lorentz y bombeo MHD
+
+Nombra los videos como dice la guía: `D0_10V.mp4` … `D2_24V.mp4` (bloque de
+distancia y voltaje). La corriente **I** se lee en la fuente durante la sesión
+y se anota en la tabla **«Registro de los tres bloques»**.
+
+**Modo por lotes (recomendado para los 24 videos).**
+
+1. En la barra lateral elige **Laboratorio → FIS301 · Lab 3 — Fuerza de
+   Lorentz / bombeo MHD**.
+2. Sube **uno** de los videos en la barra lateral (por ejemplo `D0_10V.mp4`) y
+   calíbralo en el **Paso 2** con la regla en el plano del trazador. Deja
+   marcada la cámara fija.
+3. Ve a la etapa **🌀 Lote FIS301 (24 videos)** y sube los videos (todos, o un
+   bloque a la vez si pesan mucho).
+4. En **"Color del trazador y posición de la mina"**: haz clic sobre el
+   trazador (toma su color); luego elige **"la mina"** y haz clic sobre la mina
+   alrededor de la cual gira. La máscara debe mostrar el trazador y casi nada
+   más: ni burbujas ni la mina.
+5. Pulsa **Procesar**. Para cada video, la app sigue el trazador, descarta el
+   arranque y calcula, en el tramo de giro estable:
+   - **v**: la rapidez media cuadro a cuadro (mm/s) → columna *v* de la tabla
+     de registro;
+   - **s_v**: su desviación estándar cuadro a cuadro, y **u_v**, la
+     incertidumbre de v (s_v o la resolución, la mayor);
+   - **r**: el radio de la órbita (círculo ajustado) y **d_mina**, la distancia
+     a la mina, con su dispersión. La guía pide que sea parecido entre puntos:
+     la app avisa si un video se aleja de la mediana de su bloque.
+6. Escribe **I (mA)** en la columna editable de cada video, desde tu registro.
+7. Revisa los avisos (menos de una vuelta, radio que cambia, trazador perdido)
+   y, si quieres, la órbita de cada video en **"Ver la órbita de un video"**.
+8. Descarga **"Resumen + datos crudos (ZIP)"**: la tabla resumen y la
+   trayectoria de cada video, que se entregan con el informe. Si cierras la
+   app, sube la tabla resumen para seguir.
+9. Etapa **📈 Análisis de grupo → FIS301**: ajuste de **v = k·I por el
+   origen** para cada distancia, con **k**, su **error estándar** y **R²**
+   (calculado como Excel con la intersección en cero), el gráfico **v(I)** y
+   el gráfico **v(V)** sin ajuste.
+
+**Video a video.** Para el control de la guía al inicio de D0 (*"analice los
+dos primeros videos antes de seguir"*) o para revisar un video dudoso: sube el
+video, sigue el trazador por **Color** en el Paso 3 y abre el **Paso 5**. Ahí
+marcas la mina, ves la órbita con el círculo ajustado, la rapidez cuadro a
+cuadro con el tramo estable sombreado y el radio a lo largo del video, y con
+**"Agregar a la tabla del lote"** (escribiendo I) lo sumas a la misma tabla.
+
+---
+
+## 7. Consejos para grabar los videos
 
 - Cámara **perpendicular** al plano del movimiento y **fija** (trípode o apoyada).
 - La regla de calibración debe estar **en el mismo plano** que el movimiento.
@@ -206,7 +322,7 @@ en el péndulo simple.
 
 ---
 
-## 7. Solución de problemas
+## 8. Solución de problemas
 
 | Problema | Solución |
 |---|---|
@@ -218,10 +334,13 @@ en el péndulo simple.
 | El video es muy largo / lento | En la Etapa 1, elige un **intervalo** corto de frames. |
 | No aparece el método CSRT | Instalaste `opencv-python` en vez de `opencv-contrib-python`. |
 | Editar frame por frame va lento | Acota el intervalo; usa tracking automático y corrige solo los puntos malos. |
+| El CSV se abre con todo en una columna | Tu Excel no está en español: usa *Datos → Desde texto/CSV* y elige «;» como separador. |
+| En un Lab 3 el segundo carro "salta" al primero | Vuelve a seguir el carro 2 después del carro 1 (la exclusión usa los puntos ya seguidos del otro carro). |
+| El trazador de FIS301 se pierde entre burbujas | Usa el método **Color** y sube la saturación mínima hasta que la máscara muestre solo el trazador. |
 
 ---
 
-## 8. Compartir el programa
+## 9. Compartir el programa
 
 - **Windows:** ejecuta `Crear_paquete_para_compartir.bat` para generar un `.zip`
   limpio y envíalo. El estudiante sigue `LEEME_ESTUDIANTES.txt`.
