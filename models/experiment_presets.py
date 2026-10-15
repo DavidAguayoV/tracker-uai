@@ -9,7 +9,9 @@ Los flujos disponibles (``workflow``):
   * "fit"               — ajuste genérico de un modelo a una señal.
   * "gravity_incline"   — parábola en x(t); reporta a = 2·a2.
   * "terminal_velocity" — lee la meseta de v(t); reporta v_t.
-  * "collision"         — recta por tramos; reporta v_i y v_f.
+  * "collision"         — recta por tramos; reporta v_i y v_f (un carro).
+  * "colision_2carros"  — FIS101 Lab 3: dos carros, tramos y C_R.
+  * "orbita"            — FIS301 Lab 3: rapidez y radio de la órbita.
   * "conical"           — péndulo cónico: elipse, período, focos, áreas.
   * "period_zero"       — período por cruces por cero de una señal.
   * "linear_speed"      — recta en x(t) o y(t); la pendiente es la rapidez.
@@ -83,13 +85,19 @@ PRESETS: List[Preset] = [
         key="fis101_lab3_colisiones",
         curso="FIS101",
         nombre="Lab 3 — Colisiones (momentum)",
-        workflow="collision",
-        descripcion="Recta por tramos: v_i antes y v_f después del choque.",
+        workflow="colision_2carros",
+        descripcion="Dos carros: instante del choque, tramos de velocidad "
+        "constante antes y después, v1i, v2i, v1f y v2f con su incertidumbre, "
+        "y p_i, p_f, Δp, Δp/p_i, K_i, K_f y C_R.",
         signal="x_m",
-        model="linear",
-        param_label="v_i, v_f (m/s)",
-        ayuda="Trackea un carro por sesión. Marca el instante del choque para "
-        "separar los tramos. Repite para el otro carro (multi-objeto es v2).",
+        model=None,
+        param_label="v1i, v2i, v1f, v2f (m/s)",
+        ayuda="Sigue los DOS carros en el Paso 3 (Carro 1 y Carro 2, cada uno "
+        "por su marca de color). El eje x va paralelo al riel y es positivo en "
+        "el sentido en que parte el carro 1: si en el video avanza hacia la "
+        "izquierda, la app invierte el signo sola. Un video por ensayo; el "
+        "bloque (A–D) se lee del nombre ensayo01…ensayo12. Guarda cada "
+        "ensayo en la tabla y descárgala para el análisis de grupo.",
     ),
     Preset(
         key="fis201_lab1_conico",
@@ -125,14 +133,19 @@ PRESETS: List[Preset] = [
     Preset(
         key="fis301_lab3_lorentz",
         curso="FIS301",
-        nombre="Lab 3 — Fuerza de Lorentz / MHD",
-        workflow="linear_speed",
-        descripcion="Recta en x(t) o y(t); la pendiente es la rapidez del flujo.",
-        signal="x_m",
-        model="linear",
-        param_label="v (rapidez del flujo)",
-        ayuda="Trackea el trazador de látex flotante, que se mueve a rapidez "
-        "aproximadamente constante.",
+        nombre="Lab 3 — Fuerza de Lorentz / bombeo MHD",
+        workflow="orbita",
+        descripcion="Rapidez del trazador cuadro a cuadro a lo largo de su "
+        "órbita alrededor de la mina: v media en el tramo de giro estable, su "
+        "desviación estándar s_v y el radio de la órbita.",
+        signal="speed",
+        model=None,
+        param_label="v (mm/s)",
+        ayuda="Vista cenital. Sigue el trazador de látex por COLOR en el Paso 3 "
+        "(es más robusto que la plantilla frente a las burbujas y la mina). "
+        "Marca la mina para obtener la distancia del trazador a ella. Con la "
+        "cámara fija, la calibración y la mina sirven para los 24 videos: usa "
+        "la etapa «Lote FIS301» para procesarlos todos e ingresar I de cada uno.",
     ),
 ]
 

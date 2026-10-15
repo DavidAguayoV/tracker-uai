@@ -6,13 +6,15 @@ testearla sin Streamlit.
 Ejecutar con:
     python -m streamlit run app.py
 
-Etapas implementadas:
-  1. Video       — carga y navegación frame a frame.
-  2. Calibración — escala px→m, origen y eje Y físico (arriba +).
+Etapas: 1 Video · 2 Calibración · 3 Tracking (uno o varios objetos) ·
+4 Cinemática · 5 Ajuste (presets por laboratorio) · 6 Exportar, más los
+módulos sin video (Gráficos, Medición), el modo por lotes de FIS301 y el
+análisis de grupo de los Laboratorios 3.
 """
 
 from __future__ import annotations
 
+import os
 from typing import Optional, Tuple
 
 import cv2
@@ -54,6 +56,34 @@ from core.kinematics import (
     motion_summary,
     position_columns,
 )
+from core import formato as F
+from core.colisiones import (
+    Tramo,
+    analizar_colision,
+    bloque_de_ensayo,
+    calculos_colision,
+    ensayo_desde_nombre,
+    resolucion_velocidad,
+    velocidad,
+)
+from core.grupo import ajustes_fis301, resumen_bloques_fis101
+from core.lote import (
+    COLUMNAS_FIS101,
+    COLUMNAS_FIS301,
+    avisos_radio_bloque,
+    fila_fis101,
+    fila_fis301,
+    nombre_fis301,
+    normalizar,
+    ordenar_fis101,
+    ordenar_fis301,
+    reemplazar_fila,
+    tabla_fis101_vacia,
+    tabla_fis301_vacia,
+)
+from core.orbita import analizar_orbita, rapidez
+from core.procesar import procesar_video_fis301
+from core.seguimiento import mascara_color, muestra_color, seguir_color, seguir_plantilla
 from core.tracking import TrackTable, from_dataframe
 from core.video import VideoReader, save_uploaded_to_temp
 from models.experiment_presets import PRESETS, preset_labels
@@ -129,9 +159,44 @@ def _init_state() -> None:
     st.session_state.setdefault("meas_realdist", 0.10)
     st.session_state.setdefault("_meas_last_click", None)
     st.session_state.setdefault("meas_saved", [])        # mediciones guardadas
+    # Varios objetos (Lab 3 de FIS101: dos carros). ``track`` es siempre la
+    # tabla del objeto activo; ``objetos`` guarda todas por nombre.
+    st.session_state.setdefault("objeto_activo", "Objeto 1")
+    st.session_state.setdefault(
+        "objetos", {st.session_state.objeto_activo: st.session_state.track})
+    st.session_state.setdefault("sel_por_objeto", {})   # recuadro/color por objeto
+    st.session_state.setdefault("auto_muestra", None)   # MuestraColor (modo robusto)
+    st.session_state.setdefault("auto_semilla", None)   # clic sobre el objeto (px)
+    st.session_state.setdefault("_track_info", None)
+    # Cámara fija: misma calibración (y mina) para todos los videos de la sesión.
+    st.session_state.setdefault("mantener_calib", False)
+    st.session_state.setdefault("calib_size", None)
+    st.session_state.setdefault("mina_px", None)        # FIS301: posición de la mina
+    st.session_state.setdefault("_mina_last_click", None)
+    st.session_state.setdefault("muestra_trazador", None)  # FIS301: color del trazador
+    # Tablas de resultados por video de los Laboratorios 3.
+    st.session_state.setdefault("tabla_fis101", tabla_fis101_vacia())
+    st.session_state.setdefault("tabla_fis301", tabla_fis301_vacia())
+    st.session_state.setdefault("lote_crudos", {})      # archivo -> CSV de datos crudos
+    st.session_state.setdefault("lote_res", {})         # archivo -> (resultado, t, x, y, v)
+    st.session_state.setdefault("m1_g", 0.0)
+    st.session_state.setdefault("m2_g", 0.0)
 
 
 _init_state()
+
+
+def _sync_objetos() -> None:
+    """Mantiene ``objetos[activo]`` apuntando a ``track``.
+
+    Varias partes de la app reemplazan ``st.session_state.track`` por una
+    tabla nueva (la tabla editable, borrar puntos…). Al comienzo de cada
+    pasada se vuelve a enlazar con el objeto activo.
+    """
+    st.session_state.objetos[st.session_state.objeto_activo] = st.session_state.track
+
+
+_sync_objetos()
 
 
 # --------------------------------------------------------------------------
@@ -295,6 +360,125 @@ def draw_conical_overlay(img, xpx, ypx, ell, ref, n_segments):
     return img
 
 
+# --------------------------------------------------------------------------
+# Varios objetos y laboratorio elegido
+# --------------------------------------------------------------------------
+#: Claves de la selección del objeto que se guardan por objeto.
+_SEL_KEYS = ("auto_roi", "auto_hsv", "auto_muestra", "auto_semilla")
+
+
+def _cambiar_objeto(nuevo: str) -> None:
+    """Cambia el objeto activo, guardando la tabla y la selección del anterior."""
+    viejo = st.session_state.objeto_activo
+    if nuevo == viejo or nuevo not in st.session_state.objetos:
+        return
+    st.session_state.objetos[viejo] = st.session_state.track
+    st.session_state.sel_por_objeto[viejo] = {
+        k: st.session_state.get(k) for k in _SEL_KEYS}
+    guardado = st.session_state.sel_por_objeto.get(nuevo, {})
+    for k in _SEL_KEYS:
+        st.session_state[k] = guardado.get(k)
+    st.session_state.objeto_activo = nuevo
+    st.session_state.track = st.session_state.objetos[nuevo]
+    st.session_state.pop("_track_info", None)
+    _invalidate_derived()
+
+
+def _on_selector_objeto(key: str) -> None:
+    _cambiar_objeto(st.session_state[key])
+
+
+def selector_objeto(key: str, etiqueta: str, horizontal: bool = True) -> None:
+    """Radio para elegir el objeto activo (solo si hay más de uno)."""
+    nombres = list(st.session_state.objetos)
+    if len(nombres) < 2:
+        return
+    st.session_state[key] = st.session_state.objeto_activo
+    st.radio(etiqueta, nombres, key=key, horizontal=horizontal,
+             on_change=_on_selector_objeto, args=(key,))
+
+
+def _agregar_objeto() -> None:
+    objs = st.session_state.objetos
+    i = len(objs) + 1
+    while f"Objeto {i}" in objs:
+        i += 1
+    objs[f"Objeto {i}"] = TrackTable()
+
+
+def _quitar_objeto(nombre: str) -> None:
+    objs = st.session_state.objetos
+    if len(objs) < 2 or nombre not in objs:
+        return
+    if nombre == st.session_state.objeto_activo:
+        _cambiar_objeto(next(n for n in objs if n != nombre))
+    objs.pop(nombre, None)
+    st.session_state.sel_por_objeto.pop(nombre, None)
+
+
+def _renombrar_objetos(nombres: list) -> None:
+    """Da a los primeros objetos los nombres pedidos (p. ej. Carro 1, Carro 2)."""
+    objs = st.session_state.objetos
+    actuales = list(objs)
+    nuevo = {}
+    for i, n in enumerate(nombres):
+        nuevo[n] = objs[actuales[i]] if i < len(actuales) else TrackTable()
+    for n in actuales[len(nombres):]:
+        if n not in nuevo:
+            nuevo[n] = objs[n]
+    mapa = dict(zip(actuales, nombres))
+    st.session_state.objetos = nuevo
+    st.session_state.objeto_activo = mapa.get(st.session_state.objeto_activo,
+                                              st.session_state.objeto_activo)
+    if st.session_state.objeto_activo not in nuevo:
+        st.session_state.objeto_activo = nombres[0]
+    st.session_state.track = nuevo[st.session_state.objeto_activo]
+    st.session_state.sel_por_objeto = {
+        mapa.get(k, k): v for k, v in st.session_state.sel_por_objeto.items()}
+
+
+def _preset():
+    return PRESETS[int(st.session_state.preset_idx)]
+
+
+def _lab() -> str:
+    """Clave del preset de laboratorio elegido."""
+    return _preset().key
+
+
+LAB3_FIS101 = "fis101_lab3_colisiones"
+LAB3_FIS301 = "fis301_lab3_lorentz"
+
+
+def _modo_robusto() -> bool:
+    """Seguimiento con predicción y exclusión: varios objetos o un Lab 3."""
+    return len(st.session_state.objetos) > 1 or _lab() in (LAB3_FIS101, LAB3_FIS301)
+
+
+def _configurar_lab() -> None:
+    """Ajustes que dependen del laboratorio elegido."""
+    lab = _lab()
+    if lab == LAB3_FIS101:
+        if list(st.session_state.objetos)[:2] != ["Carro 1", "Carro 2"]:
+            _renombrar_objetos(["Carro 1", "Carro 2"])
+        st.session_state.mantener_calib = True
+    elif lab == LAB3_FIS301:
+        st.session_state.mantener_calib = True
+
+
+def _on_lab(key: str) -> None:
+    st.session_state.preset_idx = int(st.session_state[key])
+    _configurar_lab()
+
+
+def selector_lab(key: str, etiqueta: str, ayuda: str = "") -> None:
+    """Selector del laboratorio (preset), sincronizado entre barra lateral y Paso 5."""
+    labels = preset_labels()
+    st.session_state[key] = int(st.session_state.preset_idx)
+    st.selectbox(etiqueta, range(len(labels)), format_func=lambda i: labels[i],
+                 key=key, on_change=_on_lab, args=(key,), help=ayuda or None)
+
+
 def _invalidate_derived() -> None:
     """Borra todo resultado derivado en caché (al cambiar el intervalo)."""
     for k in ["_ghost_overlay", "export_ready", "export_zip", "export_csv",
@@ -312,10 +496,11 @@ def _sync_interval(ps: int, pe: int) -> None:
     if st.session_state.get("_last_interval") != cur:
         st.session_state._last_interval = cur
         _invalidate_derived()
-        # Elimina físicamente de la tabla los puntos fuera del nuevo rango.
-        table = st.session_state.track
-        table.points = [p for p in table.points
-                        if cur[0] <= p.frame_idx <= cur[1]]
+        # Elimina físicamente de las tablas los puntos fuera del nuevo rango
+        # (de todos los objetos, no solo del activo).
+        for table in st.session_state.objetos.values():
+            table.points = [p for p in table.points
+                            if cur[0] <= p.frame_idx <= cur[1]]
 
 
 def render_navigator(reader: VideoReader, key_prefix: str) -> int:
@@ -390,13 +575,36 @@ def _load_video(uploaded) -> bool:
     st.session_state.proc_start = 0
     st.session_state.proc_end = reader.n_frames - 1
     st.session_state._last_interval = (0, reader.n_frames - 1)
-    # Reinicia calibración y tracking al cambiar de video.
-    st.session_state.calib_p1 = None
-    st.session_state.calib_p2 = None
-    st.session_state.calib_origin = None
-    st.session_state.calib_xdir = None
-    st.session_state.calibration = None
-    st.session_state.track = TrackTable()
+    # Reinicia calibración y tracking al cambiar de video. Con la cámara fija
+    # (Labs 3: 12 o 24 videos de la misma sesión) la calibración se conserva,
+    # salvo que el video nuevo tenga otra resolución.
+    tam = (reader.width, reader.height)
+    conservar = (st.session_state.mantener_calib
+                 and st.session_state.calibration is not None
+                 and st.session_state.calib_size in (None, tam))
+    if conservar:
+        st.session_state["_calib_flash"] = (
+            "Se conservó la calibración del video anterior (cámara fija).")
+    else:
+        if st.session_state.calibration is not None and st.session_state.mantener_calib:
+            st.session_state["_calib_flash"] = (
+                "El video nuevo tiene otra resolución: hay que calibrar de nuevo.")
+        st.session_state.calib_p1 = None
+        st.session_state.calib_p2 = None
+        st.session_state.calib_origin = None
+        st.session_state.calib_xdir = None
+        st.session_state.calibration = None
+        st.session_state.mina_px = None
+    st.session_state.calib_size = tam
+    nombres = list(st.session_state.objetos) or ["Objeto 1"]
+    st.session_state.objetos = {n: TrackTable() for n in nombres}
+    if st.session_state.objeto_activo not in st.session_state.objetos:
+        st.session_state.objeto_activo = nombres[0]
+    st.session_state.track = st.session_state.objetos[st.session_state.objeto_activo]
+    st.session_state.sel_por_objeto = {}
+    for k in _SEL_KEYS:
+        st.session_state[k] = None
+    st.session_state.pop("_track_info", None)
     return True
 
 
@@ -406,8 +614,11 @@ def _load_video(uploaded) -> bool:
 ETAPAS = [
     "1 · Video", "2 · Calibración", "3 · Tracking", "4 · Cinemática",
     "5 · Ajuste", "6 · Exportar", "📊 Gráficos (datos manuales)",
-    "📐 Medición (foto)",
+    "📐 Medición (foto)", "🌀 Lote FIS301 (24 videos)",
+    "📈 Análisis de grupo (Lab 3)",
 ]
+ETAPA_LOTE = "🌀 Lote FIS301 (24 videos)"
+ETAPA_GRUPO = "📈 Análisis de grupo (Lab 3)"
 
 # Navegación diferida: un botón "Continuar" no puede escribir directamente en
 # st.session_state["etapa"], porque Streamlit prohíbe modificar la clave de un
@@ -490,18 +701,33 @@ with st.sidebar:
     if st.session_state.get("_load_error"):
         st.error("⚠️ " + st.session_state["_load_error"])
 
+    selector_lab(
+        "lab_sel", "Laboratorio",
+        ayuda="Elige tu laboratorio: ajusta el seguimiento (por ejemplo, dos "
+        "carros en el Lab 3 de FIS101) y el análisis del Paso 5.")
+
     st.divider()
 
     # Progreso del flujo: le dice al estudiante dónde está y qué le falta.
     hechos = _stage_status()
     if st.session_state.reader is not None:
         st.caption("**Progreso**")
+        if len(st.session_state.objetos) > 1:
+            ps_, pe_ = st.session_state.proc_start, st.session_state.proc_end
+            lineas = []
+            for nombre, tabla in st.session_state.objetos.items():
+                n_o = sum(1 for p in tabla.points if ps_ <= p.frame_idx <= pe_)
+                lineas.append(f"{'✅' if n_o >= 2 else '⬜'} {nombre} seguido ({n_o} puntos)")
+            seguido = "\n\n".join(lineas)
+        else:
+            seguido = (f"{'✅' if hechos['track'] else '⬜'} Objeto seguido "
+                       f"({hechos['n_puntos']} puntos)")
         st.caption(
             f"{'✅' if hechos['video'] else '⬜'} Tramo del video elegido\n\n"
             f"{'✅' if hechos['calib'] else '⬜'} Calibración aplicada\n\n"
-            f"{'✅' if hechos['track'] else '⬜'} Objeto seguido "
-            f"({hechos['n_puntos']} puntos)"
+            + seguido
         )
+        selector_objeto("obj_sel_sb", "Objeto activo", horizontal=False)
 
     # Sin format_func a propósito: las etiquetas del selector deben coincidir
     # exactamente con los valores guardados en session_state["etapa"], que son
@@ -1115,6 +1341,436 @@ def stage_medicion() -> None:
 
 
 # --------------------------------------------------------------------------
+# Laboratorios 3: utilidades de tablas (coma decimal, CSV para Excel)
+# --------------------------------------------------------------------------
+def _tabla_es(df: pd.DataFrame, formatos: dict) -> pd.DataFrame:
+    """Copia de la tabla para mostrar, con coma decimal.
+
+    ``formatos`` = {columna: decimales (int) o "s3" (3 cifras significativas)}.
+    Las columnas que no aparecen se muestran tal cual.
+    """
+    out = df.copy()
+    for c, f in formatos.items():
+        if c not in out:
+            continue
+        vals = pd.to_numeric(out[c], errors="coerce")
+        if f == "s3":
+            out[c] = [F.cifras(v, 3) for v in vals]
+        else:
+            out[c] = [F.num(v, int(f)) for v in vals]
+    return out.fillna("")
+
+
+FMT_FIS101 = {
+    "m1 (g)": 1, "m2 (g)": 1,
+    "v1i (m/s)": 3, "u_v1i (m/s)": 3, "v2i (m/s)": 3, "u_v2i (m/s)": 3,
+    "v1f (m/s)": 3, "u_v1f (m/s)": 3, "v2f (m/s)": 3, "u_v2f (m/s)": 3,
+    "p_i (kg·m/s)": 4, "p_f (kg·m/s)": 4, "Δp (kg·m/s)": 4, "Δp/p_i (%)": 1,
+    "K_i (J)": 4, "K_f (J)": 4, "C_R": 3, "t_choque (s)": 3,
+}
+FMT_FIS301 = {
+    "V (V)": 0, "I (mA)": 1, "v (mm/s)": 3, "s_v (mm/s)": 3, "u_v (mm/s)": 3,
+    "r (mm)": 2, "s_r (mm)": 2, "d_mina (mm)": 2, "vueltas": 2,
+    "t_ini (s)": 2, "t_fin (s)": 2,
+}
+
+
+def _importar_tabla(key: str, columnas: list, destino: str, ordenar) -> None:
+    """Carga una tabla exportada antes (CSV), para continuar otro día."""
+    up = st.file_uploader(
+        "¿Ya tenías una tabla guardada? Súbela para continuar (CSV)",
+        type=["csv"], key=key,
+        help="El CSV que descargaste de esta misma tabla. Reemplaza la tabla "
+        "actual de la sesión.")
+    if up is None:
+        return
+    firma = (up.name, up.size)
+    if st.session_state.get(f"_{key}_firma") == firma:
+        return
+    try:
+        df = normalizar(F.leer_csv_es(up.getvalue()), columnas)
+    except Exception as e:
+        st.error(f"No se pudo leer el CSV: {e}")
+        return
+    st.session_state[destino] = ordenar(df)
+    st.session_state[f"_{key}_firma"] = firma
+    st.session_state["lote_ver"] = st.session_state.get("lote_ver", 0) + 1
+    st.rerun()
+
+
+# --------------------------------------------------------------------------
+# Etapa · Lote FIS301 (24 videos con la misma calibración)
+# --------------------------------------------------------------------------
+def _lote_ref_frame(up) -> Optional[np.ndarray]:
+    """Primer cuadro del primer video del lote (para elegir color y mina)."""
+    firma = (up.name, up.size)
+    if st.session_state.get("_lote_ref_firma") != firma:
+        try:
+            path = save_uploaded_to_temp(up, suffix="." + up.name.split(".")[-1].lower())
+            r = VideoReader(path)
+            st.session_state["_lote_ref_frame"] = r.get_frame(0)
+            r.release()
+        except Exception as e:
+            st.error(f"No se pudo abrir {up.name}: {e}")
+            return None
+        st.session_state["_lote_ref_firma"] = firma
+    return st.session_state.get("_lote_ref_frame")
+
+
+def _datos_crudos_orbita(pts, calib) -> bytes:
+    """CSV con los datos crudos de un video del lote."""
+    fr = np.array([p[0] for p in pts], dtype=int)
+    t = np.array([p[1] for p in pts], dtype=float)
+    xp = np.array([p[2] for p in pts], dtype=float)
+    yp = np.array([p[3] for p in pts], dtype=float)
+    x, y = calib.to_meters(xp, yp)
+    df = pd.DataFrame({"frame": fr, "t (s)": t, "x_px": xp, "y_px": yp,
+                       "x (m)": x, "y (m)": y, "rapidez (m/s)": rapidez(t, x, y)})
+    return F.csv_es(df)
+
+
+def stage_lote() -> None:
+    st.subheader("🌀 FIS301 · Lab 3 — modo por lotes (24 videos)")
+    st.markdown(
+        "Con la cámara fija, **una sola calibración** sirve para todos los "
+        "videos de la sesión. Aquí subes los videos (todos o por bloque), el "
+        "programa sigue el trazador en cada uno y arma la **tabla resumen**: "
+        "bloque y voltaje salen del nombre del archivo (`D0_10V.mp4` … "
+        "`D2_24V.mp4`); la corriente **I** la escribes tú, desde tu registro "
+        "de la sesión."
+    )
+    calib = st.session_state.calibration
+
+    # --- 1. Configuración de la sesión ---------------------------------------
+    st.markdown("#### 1) Configuración común a todos los videos")
+    c1, c2, c3 = st.columns(3)
+    c1.markdown(("✅" if calib else "⬜") + " **Calibración**")
+    c2.markdown(("✅" if st.session_state.muestra_trazador else "⬜")
+                + " **Color del trazador**")
+    c3.markdown(("✅" if st.session_state.mina_px else "⬜") + " **Mina** (opcional)")
+    if calib is None:
+        st.warning(
+            "Falta la calibración. Sube **uno** de los videos en la barra "
+            "lateral, calíbralo en el Paso 2 (regla en el plano del trazador) "
+            "y vuelve aquí: la calibración se reutiliza para el lote.",
+            icon="⚠️",
+        )
+        nav_button("Ir al Paso 2 · Calibración", "2 · Calibración", key="nav_lote_calib",
+                   tipo="secondary")
+    else:
+        st.caption(f"Calibración: {calib.summary()} · 1 px = "
+                   f"{F.cifras(calib.m_per_px * 1000, 3)} mm")
+
+    # --- 2. Videos ------------------------------------------------------------
+    st.markdown("#### 2) Sube los videos")
+    ups = st.file_uploader(
+        "Videos de la sesión (puedes elegir varios a la vez)",
+        type=["mp4", "mov", "avi", "mkv", "m4v", "webm"],
+        accept_multiple_files=True, key="lote_up",
+        help="Si son muchos o muy pesados, súbelos por bloque (D0, luego D1, "
+        "luego D2): la tabla se va completando.")
+    ups = ups or []
+    if ups:
+        filas = []
+        for u in ups:
+            b, V = nombre_fis301(u.name)
+            hecho = u.name in st.session_state.lote_res
+            filas.append({"archivo": u.name, "bloque": b or "¿?",
+                          "V (V)": F.num(V, 0) if V is not None else "¿?",
+                          "estado": "✅ procesado" if hecho else "pendiente"})
+        st.dataframe(pd.DataFrame(filas), hide_index=True, width="stretch")
+        if any(nombre_fis301(u.name)[0] is None for u in ups):
+            st.warning("Algunos nombres no siguen la convención `D0_10V.mp4`: "
+                       "completa su bloque y voltaje a mano en la tabla.")
+
+        with st.expander("🎯 Color del trazador y posición de la mina",
+                         expanded=st.session_state.muestra_trazador is None):
+            frame = _lote_ref_frame(ups[0])
+            if frame is not None:
+                objetivo = st.radio("Con el próximo clic marco…",
+                                    ["el trazador (su color)", "la mina"],
+                                    horizontal=True, key="lote_obj")
+                h1, h2, h3 = st.columns(3)
+                h_tol = h1.slider("Tolerancia de tono", 2, 40, 12, key="lote_htol")
+                s_min = h2.slider("Saturación mínima", 0, 255, 60, key="lote_smin")
+                v_min = h3.slider("Brillo mínimo", 0, 255, 60, key="lote_vmin")
+                img = frame.copy()
+                if st.session_state.mina_px:
+                    mx, my = (int(v) for v in st.session_state.mina_px)
+                    cv2.drawMarker(img, (mx, my), (255, 0, 255), cv2.MARKER_STAR,
+                                   max(14, img.shape[1] // 40), 2)
+                W = img.shape[1]
+                value = streamlit_image_coordinates(
+                    fit_display(img), width=min(DISPLAY_WIDTH, W),
+                    key="lote_clicker", cursor="crosshair")
+                if value is not None and value != st.session_state.get("_lote_last_click"):
+                    st.session_state["_lote_last_click"] = value
+                    pt = click_to_original(value, W)
+                    if pt is not None:
+                        if objetivo.startswith("la mina"):
+                            st.session_state.mina_px = pt
+                        else:
+                            st.session_state.muestra_trazador = muestra_color(
+                                frame, pt[0], pt[1], h_tol, s_min, v_min)
+                        st.rerun()
+                m = st.session_state.muestra_trazador
+                if m is not None:
+                    m.h_tol, m.s_min, m.v_min = int(h_tol), int(s_min), int(v_min)
+                    st.image(mascara_color(frame, m), width=min(DISPLAY_WIDTH, W),
+                             caption="Máscara del color elegido (blanco = detectado). "
+                             "Debe verse el trazador y casi nada más: ni burbujas "
+                             "ni la mina.")
+                st.caption(
+                    "En cada video se sigue la mancha de ese color **más cercana a "
+                    "la mina** en el primer cuadro (o la más grande, si no "
+                    "marcaste la mina).")
+
+        listo = calib is not None and st.session_state.muestra_trazador is not None
+        reprocesar = st.checkbox("Volver a procesar también los ya procesados",
+                                 key="lote_reproc")
+        pendientes = [u for u in ups
+                      if reprocesar or u.name not in st.session_state.lote_res]
+        if st.button(f"▶️ Procesar {len(pendientes)} video(s)", type="primary",
+                     disabled=not listo or not pendientes, width="stretch",
+                     key="lote_go"):
+            _procesar_lote(pendientes)
+        if not listo:
+            st.caption("Para procesar faltan la calibración y/o el color del trazador.")
+
+    flash = st.session_state.pop("_lote_flash", None)
+    if flash:
+        st.success(flash)
+    for e in st.session_state.pop("_lote_errores", []):
+        st.error(e)
+
+    # --- 3. Tabla resumen -------------------------------------------------
+    st.markdown("#### 3) Tabla resumen")
+    _importar_tabla("lote_csv_up", COLUMNAS_FIS301, "tabla_fis301", ordenar_fis301)
+    tabla = st.session_state.tabla_fis301
+    if tabla.empty:
+        st.info("La tabla se llena al procesar videos (aquí o en el Paso 5 con el "
+                "laboratorio FIS301 · Lab 3).")
+        return
+    st.caption(
+        "Escribe la corriente **I (mA)** de cada video (columna editable). Si un "
+        "nombre no traía bloque o voltaje, complétalos también. "
+        "**v** es la rapidez media en el tramo de giro estable; **s_v**, su "
+        "desviación estándar cuadro a cuadro; **u_v**, la incertidumbre (s_v o "
+        "la resolución, la mayor); **r**, el radio medio de la órbita.")
+    editable = ["bloque", "V (V)", "I (mA)"]
+    ver = st.session_state.get("lote_ver", 0)
+    vista = tabla.copy()
+    for c in ["V (V)", "I (mA)"] + [c for c in FMT_FIS301 if c not in ("V (V)", "I (mA)")]:
+        vista[c] = pd.to_numeric(vista[c], errors="coerce")
+    editada = st.data_editor(
+        vista, key=f"lote_editor_{ver}", width="stretch", hide_index=True,
+        disabled=[c for c in vista.columns if c not in editable],
+        column_config={
+            "I (mA)": st.column_config.NumberColumn("I (mA) ✏️", format="%.1f"),
+            "V (V)": st.column_config.NumberColumn("V (V)", format="%.0f"),
+            "bloque": st.column_config.TextColumn("bloque ✏️"),
+            **{c: st.column_config.NumberColumn(c, format=f"%.{d}f")
+               for c, d in FMT_FIS301.items() if c not in ("V (V)", "I (mA)")},
+        },
+    )
+    if not editada[editable].equals(vista[editable]):
+        nueva = tabla.copy()
+        for c in editable:
+            nueva[c] = editada[c].values
+        st.session_state.tabla_fis301 = nueva
+        tabla = nueva
+
+    avisos_r = avisos_radio_bloque(tabla)
+    if (avisos_r != "").any():
+        st.warning("**Radio distinto al del resto del bloque** (la guía pide que el "
+                   "trazador gire a una distancia de la mina parecida en todos los "
+                   "puntos):\n\n" + "\n".join(
+                       f"- {tabla.loc[i, 'archivo']}: {a}" for i, a in avisos_r.items() if a))
+    faltan_I = int(pd.to_numeric(tabla["I (mA)"], errors="coerce").isna().sum())
+    if faltan_I:
+        st.info(f"Falta la corriente I en {faltan_I} video(s).")
+    otros = [f"- {r['archivo']}: {r['avisos']}" for _, r in tabla.iterrows()
+             if isinstance(r.get("avisos"), str) and r["avisos"]]
+    if otros:
+        with st.expander(f"⚠️ Avisos del análisis ({len(otros)})"):
+            st.markdown("\n".join(otros))
+
+    resumen_csv = F.csv_es(tabla.assign(**{"aviso radio": avisos_r}))
+    d1, d2, d3 = st.columns(3)
+    d1.download_button("⬇️ Tabla resumen (CSV)", resumen_csv, "fis301_lab3_resumen.csv",
+                       "text/csv", width="stretch", key="lote_dl_csv")
+    crudos = {f"datos_crudos/{os.path.splitext(k)[0]}.csv": v
+              for k, v in st.session_state.lote_crudos.items()}
+    crudos["fis301_lab3_resumen.csv"] = resumen_csv
+    d2.download_button("⬇️ Resumen + datos crudos (ZIP)",
+                       export_mod.build_zip_archivos(crudos), "fis301_lab3_lote.zip",
+                       "application/zip", width="stretch", key="lote_dl_zip",
+                       help="La tabla resumen y un CSV con la trayectoria de cada "
+                       "video: son los datos crudos que se entregan con el informe.")
+    d3.button("📈 Ir al análisis de grupo", width="stretch", key="nav_lote_grupo",
+              on_click=_set_goto, args=(ETAPA_GRUPO,))
+
+    if st.session_state.lote_res:
+        with st.expander("🔎 Ver la órbita de un video"):
+            arch = st.selectbox("Video", sorted(st.session_state.lote_res), key="lote_ver_vid")
+            res, t, x, y, v = st.session_state.lote_res[arch]
+            st.image(export_mod.fig_orbita(res, t, x, y, v), width="stretch")
+            for a in res.avisos:
+                st.warning(a)
+    if st.button("🗑️ Vaciar la tabla del lote", key="lote_vaciar"):
+        st.session_state.tabla_fis301 = tabla_fis301_vacia()
+        st.session_state.lote_res = {}
+        st.session_state.lote_crudos = {}
+        st.session_state["lote_ver"] = ver + 1
+        st.rerun()
+
+
+def _procesar_lote(ups) -> None:
+    """Sigue el trazador en cada video y agrega su fila a la tabla resumen."""
+    calib = st.session_state.calibration
+    muestra = st.session_state.muestra_trazador
+    tabla = st.session_state.tabla_fis301
+    errores, hechos = [], 0
+    barra = st.progress(0.0, text="Procesando…")
+    for i, up in enumerate(ups):
+        barra.progress(i / len(ups), text=f"Procesando {up.name} ({i + 1}/{len(ups)})…")
+        path = None
+        try:
+            path = save_uploaded_to_temp(up, suffix="." + up.name.split(".")[-1].lower())
+            res, pts, _ = procesar_video_fis301(
+                path, calib, muestra, mina_px=st.session_state.mina_px,
+                fps_capture=st.session_state.fps_capture,
+                tam_calibracion=st.session_state.calib_size)
+        except Exception as e:
+            errores.append(f"{up.name}: {e}")
+            continue
+        finally:
+            if path is not None:
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+        # Se conserva la corriente ya escrita si el video se reprocesa.
+        I_prev = None
+        if not tabla.empty and up.name in set(tabla["archivo"].astype(str)):
+            I_prev = tabla.loc[tabla["archivo"].astype(str) == up.name, "I (mA)"].iloc[0]
+        tabla = reemplazar_fila(tabla, fila_fis301(up.name, res, corriente_mA=I_prev))
+        t = np.array([p[1] for p in pts])
+        x, y = calib.to_meters(np.array([p[2] for p in pts]), np.array([p[3] for p in pts]))
+        st.session_state.lote_res[up.name] = (res, t, x, y, rapidez(t, x, y))
+        st.session_state.lote_crudos[up.name] = _datos_crudos_orbita(pts, calib)
+        hechos += 1
+    barra.empty()
+    st.session_state.tabla_fis301 = ordenar_fis301(normalizar(tabla, COLUMNAS_FIS301))
+    st.session_state["lote_ver"] = st.session_state.get("lote_ver", 0) + 1
+    st.session_state["_lote_flash"] = f"Se procesaron {hechos} de {len(ups)} video(s)."
+    st.session_state["_lote_errores"] = errores
+    st.rerun()
+
+
+# --------------------------------------------------------------------------
+# Etapa · Análisis de grupo de los Laboratorios 3
+# --------------------------------------------------------------------------
+def _tabla_de_grupo(clave: str, destino: str, columnas: list, ordenar) -> pd.DataFrame:
+    """Tabla de la sesión, o la de un CSV subido aquí (sin tocar la de la sesión)."""
+    up = st.file_uploader(
+        "Usar otra tabla (CSV exportado por la app)", type=["csv"], key=clave,
+        help="Si no la subes, se usa la tabla armada en esta sesión.")
+    if up is not None:
+        try:
+            df = ordenar(normalizar(F.leer_csv_es(up.getvalue()), columnas))
+            st.caption(f"Usando **{up.name}** ({len(df)} filas).")
+            return df
+        except Exception as e:
+            st.error(f"No se pudo leer el CSV: {e}")
+    df = st.session_state[destino]
+    st.caption(f"Usando la tabla de esta sesión ({len(df)} filas).")
+    return df
+
+
+def stage_grupo() -> None:
+    st.subheader("📈 Análisis de grupo · Laboratorios 3")
+    st.info(
+        "Esta pestaña entrega **números y gráficos**: no redacta conclusiones ni "
+        "compara con valores esperados. Esa lectura la hace el grupo en el "
+        "informe.", icon=":material/info:")
+    pestanas = ["FIS101 · Colisiones", "FIS301 · Bombeo MHD"]
+    if _lab() == LAB3_FIS301:
+        pestanas = pestanas[::-1]
+    tabs = dict(zip(pestanas, st.tabs(pestanas)))
+
+    with tabs["FIS101 · Colisiones"]:
+        df = _tabla_de_grupo("grupo_up101", "tabla_fis101", COLUMNAS_FIS101, ordenar_fis101)
+        if df.empty:
+            st.info("Aún no hay ensayos. Guárdalos desde el Paso 5 con el "
+                    "laboratorio «FIS101 · Lab 3».")
+        else:
+            st.markdown("**Ensayos**")
+            cols = ["ensayo", "bloque", "v1i (m/s)", "v2i (m/s)", "v1f (m/s)",
+                    "v2f (m/s)", "p_i (kg·m/s)", "p_f (kg·m/s)", "Δp (kg·m/s)",
+                    "Δp/p_i (%)", "K_i (J)", "K_f (J)", "C_R"]
+            st.dataframe(_tabla_es(df[cols], FMT_FIS101), hide_index=True, width="stretch")
+            res = resumen_bloques_fis101(df)
+            st.markdown("**Por bloque** (promedio y desviación estándar muestral de "
+                        "las repeticiones; los bloques no se mezclan)")
+            st.dataframe(_tabla_es(res, {
+                "Δp/p_i medio (%)": 1, "s Δp/p_i (%)": 1, "Δp medio (kg·m/s)": 4,
+                "s Δp (kg·m/s)": 4, "C_R medio": 3, "s C_R": 3}),
+                hide_index=True, width="stretch")
+            st.caption(
+                "En los bloques B y D los carros parten en sentidos opuestos y p_i "
+                "es pequeño: por eso se muestra siempre Δp (kg·m/s) junto a Δp/p_i.")
+            if (res["n"] < 2).any():
+                st.caption("Un bloque con un solo ensayo no tiene desviación estándar.")
+            png = export_mod.fig_grupo_fis101(df)
+            st.image(png, width="stretch")
+            g1, g2 = st.columns(2)
+            g1.download_button("⬇️ Gráfico (PNG)", png, "fis101_lab3_grupo.png",
+                               "image/png", width="stretch", key="g101_png")
+            g2.download_button("⬇️ Resumen por bloque (CSV)", F.csv_es(res),
+                               "fis101_lab3_bloques.csv", "text/csv",
+                               width="stretch", key="g101_csv")
+
+    with tabs["FIS301 · Bombeo MHD"]:
+        df = _tabla_de_grupo("grupo_up301", "tabla_fis301", COLUMNAS_FIS301, ordenar_fis301)
+        if df.empty:
+            st.info("Aún no hay videos procesados. Usa la etapa «Lote FIS301» o el "
+                    "Paso 5 con el laboratorio «FIS301 · Lab 3».")
+        else:
+            faltan = int(pd.to_numeric(df["I (mA)"], errors="coerce").isna().sum())
+            if faltan:
+                st.warning(f"{faltan} video(s) no tienen la corriente I: quedan fuera "
+                           "del ajuste v(I). Escríbela en la tabla del lote.")
+            aj = ajustes_fis301(df)
+            filas = [{"bloque": b, "n": a.n, "k ((mm/s)/mA)": a.k,
+                      "error estándar de k": a.k_err,
+                      "k ± error": F.valor_inc(a.k, a.k_err), "R²": a.r2}
+                     for b, a in aj.items()]
+            st.markdown("**Ajuste v = k·I por el origen, para cada distancia**")
+            st.dataframe(_tabla_es(pd.DataFrame(filas), {
+                "k ((mm/s)/mA)": "s3", "error estándar de k": "s3", "R²": 4}),
+                hide_index=True, width="stretch")
+            st.caption(
+                "k en (mm/s)/mA, que es numéricamente igual a (m/s)/A. R² con la "
+                "intersección fijada en cero, como lo calcula Excel en ese caso "
+                "(1 − SS_res/Σv²); no es comparable con el R² de una recta con "
+                "intercepto.")
+            p1 = export_mod.fig_v_I(df, aj)
+            p2 = export_mod.fig_v_V(df)
+            c1, c2 = st.columns(2)
+            c1.image(p1, width="stretch")
+            c2.image(p2, width="stretch")
+            g1, g2, g3 = st.columns(3)
+            g1.download_button("⬇️ v(I) (PNG)", p1, "fis301_lab3_v_I.png", "image/png",
+                               width="stretch", key="g301_png1")
+            g2.download_button("⬇️ v(V) (PNG)", p2, "fis301_lab3_v_V.png", "image/png",
+                               width="stretch", key="g301_png2")
+            g3.download_button("⬇️ Ajustes (CSV)", F.csv_es(pd.DataFrame(filas)),
+                               "fis301_lab3_ajustes.csv", "text/csv",
+                               width="stretch", key="g301_csv")
+
+
+# --------------------------------------------------------------------------
 # Guardas: hay video cargado
 # --------------------------------------------------------------------------
 st.title("Tracker UAI")
@@ -1126,6 +1782,12 @@ if etapa == "📊 Gráficos (datos manuales)":
     st.stop()
 if etapa == "📐 Medición (foto)":
     stage_medicion()
+    st.stop()
+if etapa == ETAPA_LOTE:
+    stage_lote()
+    st.stop()
+if etapa == ETAPA_GRUPO:
+    stage_grupo()
     st.stop()
 
 if reader is None:
@@ -1306,6 +1968,9 @@ def stage_video() -> None:
 def stage_calibration() -> None:
     st.subheader("Paso 2 · Calibrar: enseñarle al programa cuánto mide un píxel")
     _ensure_full_preload()
+    flash = st.session_state.pop("_calib_flash", None)
+    if flash:
+        st.info(flash, icon=":material/photo_camera:")
     st.markdown(
         "El video está en píxeles, pero tu informe necesita **metros**. Para "
         "traducir, marca sobre la imagen algo cuyo tamaño real conozcas (una "
@@ -1492,6 +2157,14 @@ def stage_calibration() -> None:
         st.info("Falta marcar: " + ", ".join(faltan) +
                 ". La calibración se aplica sola cuando estén todos.")
 
+    st.session_state.mantener_calib = st.checkbox(
+        "📌 Cámara fija: mantener esta calibración para los próximos videos",
+        value=st.session_state.mantener_calib,
+        help="Actívalo si grabaste todos los videos de la sesión sin mover el "
+        "celular (Labs 3: 12 ensayos de FIS101 o 24 videos de FIS301). Al "
+        "subir el video siguiente no habrá que calibrar de nuevo.",
+    )
+
     next_step(
         "Continuar → Paso 3 · Seguir el objeto", "3 · Tracking", "nav_calib",
         listo=calib is not None,
@@ -1588,6 +2261,8 @@ def stage_tracking() -> None:
             icon="⚠️",
         )
 
+    _panel_objetos()
+
     modos = ["Automático", "Manual"]
     st.session_state.track_mode = st.radio(
         "Modo de seguimiento",
@@ -1614,6 +2289,40 @@ def stage_tracking() -> None:
         pendiente="Necesitas al menos 2 puntos dentro del tramo para calcular "
                   "velocidades. Ejecuta el seguimiento o marca puntos a mano.",
     )
+
+
+def _panel_objetos() -> None:
+    """Elección del objeto que se sigue ahora (uno o varios objetos)."""
+    objs = st.session_state.objetos
+    ps, pe = st.session_state.proc_start, st.session_state.proc_end
+    if len(objs) > 1:
+        cuenta = " · ".join(
+            f"**{n}**: {sum(1 for p in t.points if ps <= p.frame_idx <= pe)} puntos"
+            for n, t in objs.items())
+        st.markdown("#### ¿Qué objeto estás siguiendo ahora?")
+        selector_objeto("obj_sel_p3", "Objeto activo")
+        st.caption(cuenta)
+        if _lab() == LAB3_FIS101:
+            st.info(
+                "Sigue los **dos carros**, uno a la vez: elige *Carro 1*, haz "
+                "clic sobre su marca y ejecuta el seguimiento; luego elige "
+                "*Carro 2* y repite. Al seguir el segundo, el programa descarta "
+                "las detecciones que caen sobre el primero, aunque las marcas "
+                "sean del mismo color.",
+                icon=":material/directions_car:",
+            )
+    with st.expander("➕ Seguir más de un objeto en este video"):
+        st.caption(
+            "Cada objeto tiene su propia tabla de puntos. Los Pasos 4 a 6 "
+            "muestran el objeto activo; el CSV exportado incluye todos."
+        )
+        c1, c2 = st.columns(2)
+        c1.button("➕ Agregar un objeto", key="obj_add", width="stretch",
+                  disabled=len(objs) >= 4, on_click=_agregar_objeto)
+        if len(objs) > 1:
+            c2.button(f"🗑️ Quitar «{st.session_state.objeto_activo}»", key="obj_del",
+                      width="stretch", on_click=_quitar_objeto,
+                      args=(st.session_state.objeto_activo,))
 
 
 def _ensure_full_preload() -> None:
@@ -1724,7 +2433,21 @@ def _tracking_auto() -> None:
         metodos.append("CSRT")
     else:
         st.caption("💡 CSRT no disponible (instala opencv-contrib-python para habilitarlo).")
-    metodo = st.selectbox("Método", metodos)
+    robusto = _modo_robusto()
+    if _lab() == LAB3_FIS301:
+        metodo = st.selectbox(
+            "Método", metodos, index=metodos.index("Color"), key="metodo_fis301",
+            help="Para el trazador de látex conviene el color: no lo confunde "
+            "con las burbujas (blancas) ni con la mina (negra).")
+    else:
+        metodo = st.selectbox("Método", metodos)
+    if robusto:
+        st.caption(
+            "🛡️ Seguimiento robusto activo: predice dónde estará el objeto, "
+            "descarta lo que salte demasiado o caiga sobre otro objeto ya "
+            "seguido, y deja **sin punto** los cuadros donde no lo ve (en "
+            "vez de inventar una posición)."
+        )
 
     # Rango de frames y paso (por defecto, el tramo elegido en el Paso 1).
     st.caption("El rango viene del **tramo que elegiste en el Paso 1**. Normalmente no hay que tocarlo.")
@@ -1843,9 +2566,21 @@ def _tracking_auto() -> None:
                 st.session_state.auto_hsv = hsv_range_from_pixel(
                     frame, int(pt[0]), int(pt[1]), h_tol, s_min, v_min
                 )
+                st.session_state.auto_semilla = pt
+                st.session_state.auto_muestra = muestra_color(
+                    frame, pt[0], pt[1], h_tol, s_min, v_min)
                 st.rerun()
         hsv = st.session_state.auto_hsv
-        if hsv is not None:
+        if robusto and st.session_state.auto_muestra is not None:
+            m = st.session_state.auto_muestra
+            m.h_tol, m.s_min, m.v_min = int(h_tol), int(s_min), int(v_min)
+            if _lab() == LAB3_FIS301:
+                st.session_state.muestra_trazador = m
+            st.image(mascara_color(frame, m), width=disp_w,
+                     caption="Máscara de color (blanco = detectado). El objeto "
+                     "seguido es la mancha más cercana a donde hiciste clic.")
+            st.caption(f"Color de referencia: H = {m.h}, S = {m.s}, V = {m.v}")
+        elif hsv is not None:
             lower, upper = hsv
             # Vista previa de la máscara.
             mask = cv2.inRange(cv2.cvtColor(frame, cv2.COLOR_RGB2HSV), lower, upper)
@@ -1932,8 +2667,32 @@ def _run_autotrack(metodo: str, start: int, end: int, step: int) -> None:
                        cv2.MARKER_CROSS, rad * 2, 2)
         preview.image(img, width=disp_w, caption=f"Detectando… frame {fi}")
 
+    info = None
     try:
-        if metodo == "Plantilla":
+        if _modo_robusto() and metodo in ("Plantilla", "Color"):
+            # Posiciones de los demás objetos, para no confundirse con ellos.
+            excluir = {}
+            for nombre, otra in st.session_state.objetos.items():
+                if nombre == st.session_state.objeto_activo:
+                    continue
+                for q in otra.points:
+                    excluir.setdefault(q.frame_idx, []).append((q.x_px, q.y_px))
+            if metodo == "Plantilla":
+                pts, info = seguir_plantilla(
+                    reader, st.session_state.auto_roi, start, end, step, fps,
+                    excluir=excluir, progress_cb=cb, preview_cb=pv)
+            else:
+                muestra = st.session_state.auto_muestra
+                if muestra is None:
+                    raise ValueError("Primero haz clic sobre el objeto para tomar su color.")
+                pts, info = seguir_color(
+                    reader, muestra, start, end, step, fps,
+                    semilla=st.session_state.auto_semilla, excluir=excluir,
+                    progress_cb=cb, preview_cb=pv)
+            # Un cuadro que esta vez quedó sin punto no debe heredar uno viejo.
+            table.points = [q for q in table.points
+                            if not start <= q.frame_idx <= end]
+        elif metodo == "Plantilla":
             pts = track_template(reader, st.session_state.auto_roi, start, end,
                                  step, fps, progress_cb=cb, preview_cb=pv)
         elif metodo == "CSRT":
@@ -1955,9 +2714,14 @@ def _run_autotrack(metodo: str, start: int, end: int, step: int) -> None:
     if not pts:
         st.warning("No se detectó el objeto en ningún frame. Ajusta los parámetros.")
     else:
-        st.session_state["_track_flash"] = (
-            f"Seguimiento completo: se detectaron **{len(pts)} puntos**."
-        )
+        msg = f"Seguimiento completo: se detectaron **{len(pts)} puntos**."
+        if info is not None and info.n_perdidos:
+            msg += (f" En {info.n_perdidos} cuadros no se vio el objeto y quedaron "
+                    "sin punto.")
+        if info is not None and info.recuperaciones:
+            msg += (f" Se recuperó el objeto {info.recuperaciones} vez/veces tras "
+                    "perderlo: revisa esos tramos.")
+        st.session_state["_track_flash"] = msg
         st.rerun()
 
 
@@ -2057,6 +2821,8 @@ def stage_kinematics() -> None:
     # Guarda el resultado para reutilizarlo en export/ajuste.
     st.session_state.kin_df = kdf
     resumen = motion_summary(kdf)
+    if len(st.session_state.objetos) > 1:
+        selector_objeto("obj_sel_p4", "Objeto que se muestra")
 
     # --- Resumen numérico: lo primero que el estudiante debería mirar --------
     st.markdown("#### Resumen del movimiento")
@@ -2284,14 +3050,9 @@ def stage_ajuste() -> None:
                 "tramo (Paso 3).")
         return
 
-    labels = preset_labels()
-    st.session_state.preset_idx = st.selectbox(
-        "Preset de laboratorio",
-        range(len(labels)),
-        format_func=lambda i: labels[i],
-        index=int(st.session_state.preset_idx),
-    )
-    preset = PRESETS[st.session_state.preset_idx]
+    selector_lab("preset_sel", "Preset de laboratorio",
+                 ayuda="Es el mismo selector «Laboratorio» de la barra lateral.")
+    preset = _preset()
     st.markdown(f"**{preset.descripcion}**")
     if preset.ayuda:
         st.caption("ℹ️ " + preset.ayuda)
@@ -2454,6 +3215,12 @@ def stage_ajuste() -> None:
                             "no está garantizado. Verifica el diámetro y la "
                             "calibración."
                         )
+
+    elif wf == "colision_2carros":
+        _flujo_colision()
+
+    elif wf == "orbita":
+        _flujo_orbita(kdf)
 
     elif wf == "collision":
         axis_label = st.selectbox("Eje de movimiento", ["x (m)", "y (m)"])
@@ -2738,6 +3505,412 @@ def _run_generic_fit(t, y, model: str, sig_label: str) -> None:
 
 
 # --------------------------------------------------------------------------
+# Paso 5 · Laboratorios 3
+# --------------------------------------------------------------------------
+def _datos_objeto(nombre: str) -> Optional[pd.DataFrame]:
+    """Posiciones calibradas de un objeto, dentro del tramo del Paso 1."""
+    tabla = st.session_state.objetos.get(nombre)
+    if tabla is None:
+        return None
+    df = tabla.to_dataframe(st.session_state.calibration)
+    ps, pe = st.session_state.proc_start, st.session_state.proc_end
+    if not df.empty:
+        df = df[(df["frame"] >= ps) & (df["frame"] <= pe)].reset_index(drop=True)
+    return df
+
+
+def _resolucion_v() -> float:
+    """Resolución de una velocidad cuadro a cuadro: 1 px en 2Δt (m/s)."""
+    calib = st.session_state.calibration
+    fps = st.session_state.fps_capture or (reader.fps if reader else 0.0)
+    if calib is None or not fps:
+        return 0.0
+    return resolucion_velocidad(calib.m_per_px, 1.0 / fps)
+
+
+def _layout_es(fig: go.Figure, **kw) -> go.Figure:
+    """Coma decimal en los ejes de Plotly y márgenes compactos."""
+    fig.update_layout(separators=", ", margin=dict(l=10, r=10, t=40, b=10),
+                      legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0), **kw)
+    return fig
+
+
+def _slider_tramo(etiqueta: str, tmin: float, tmax: float, tramo: Tramo,
+                  dt: float, key: str):
+    lo = float(np.clip(tramo.t_ini, tmin, tmax))
+    hi = float(np.clip(tramo.t_fin, tmin, tmax))
+    return st.slider(etiqueta, float(tmin), float(tmax), (lo, hi),
+                     step=float(dt) if dt > 0 else 0.001, format="%.3f", key=key)
+
+
+def _flujo_colision() -> None:
+    """FIS101 Lab 3: dos carros, tramos antes/después y magnitudes de la guía."""
+    nombres = list(st.session_state.objetos)
+    archivo = st.session_state.get("_uploaded_name") or "video"
+    st.markdown(
+        "**Convención de signos (la de la guía):** eje x paralelo al riel, "
+        "**positivo en el sentido en que parte el carro 1**. Los rebotes dan "
+        "velocidades negativas.")
+    if len(nombres) < 2:
+        st.warning(
+            "Solo hay un objeto seguido. Para tener v2i y v2f, sigue el segundo "
+            "carro: en el Paso 3 abre «Seguir más de un objeto».", icon="⚠️")
+    eje = st.radio(
+        "Eje del riel en el video", ["x", "y"], horizontal=True, key="col_eje",
+        help="Normalmente x. Si el riel no queda horizontal en la imagen, en el "
+        "Paso 2 activa el eje X rotado y márcalo a lo largo del riel.")
+    col = "x_m" if eje == "x" else "y_m"
+    d1 = _datos_objeto(nombres[0])
+    d2 = _datos_objeto(nombres[1]) if len(nombres) > 1 else None
+    if d1 is None or len(d1) < 6:
+        st.info(f"Sigue el **{nombres[0]}** en el Paso 3 (al menos 6 puntos).")
+        nav_button("Ir al Paso 3 · Tracking", "3 · Tracking", key="nav_col_track")
+        return
+    hay2 = d2 is not None and len(d2) >= 6
+    if len(nombres) > 1 and not hay2:
+        st.warning(f"El **{nombres[1]}** todavía no tiene puntos suficientes: elige "
+                   f"«{nombres[1]}» en el Paso 3 y sigue su marca.", icon="⚠️")
+        nav_button("Ir al Paso 3 · Tracking", "3 · Tracking", key="nav_col_track2",
+                   tipo="secondary")
+    t1, x1 = d1["t"].to_numpy(), d1[col].to_numpy()
+    t2 = d2["t"].to_numpy() if hay2 else None
+    x2 = d2[col].to_numpy() if hay2 else None
+    res_v = _resolucion_v()
+    try:
+        res = analizar_colision(t1, x1, t2, x2, resolucion=res_v)
+    except ValueError as e:
+        st.error(str(e))
+        return
+
+    with st.expander("✋ Ajustar a mano los límites de los tramos"):
+        st.caption(
+            "El programa propone los tramos: todo el tramo de velocidad "
+            "constante a cada lado del salto, descartando la interacción "
+            "magnética y dos puntos más a cada lado. Si quieres otros límites "
+            "(por ejemplo, para dejar fuera un rebote en un tope), actívalo.")
+        manual = st.checkbox("Usar mis propios límites", key="col_manual")
+        if manual:
+            tt = np.concatenate([t1, t2]) if hay2 else t1
+            dt = float(np.median(np.diff(np.sort(np.unique(tt))))) if len(tt) > 2 else 0.01
+            firma = f"{archivo}:{st.session_state.proc_start}:{st.session_state.proc_end}"
+            a = _slider_tramo("Tramo ANTES del choque (s)", tt.min(), tt.max(),
+                              res.antes, dt, f"col_antes::{firma}")
+            b = _slider_tramo("Tramo DESPUÉS del choque (s)", tt.min(), tt.max(),
+                              res.despues, dt, f"col_desp::{firma}")
+            res = analizar_colision(t1, x1, t2, x2, antes=Tramo(*a), despues=Tramo(*b),
+                                    resolucion=res_v)
+
+    st.caption(
+        f"Choque detectado en t ≈ **{F.num(res.t_choque, 3)} s**. Tramo antes: "
+        f"{F.num(res.antes.t_ini, 3)}–{F.num(res.antes.t_fin, 3)} s · tramo "
+        f"después: {F.num(res.despues.t_ini, 3)}–{F.num(res.despues.t_fin, 3)} s.")
+    if res.signo == -1:
+        st.info("En el video el carro 1 avanza hacia −x: se invirtió el signo de "
+                "todas las velocidades para seguir la convención de la guía.",
+                icon=":material/swap_horiz:")
+
+    # --- Las cuatro velocidades -------------------------------------------
+    vel = [("v1i", res.v1i), ("v2i", res.v2i), ("v1f", res.v1f), ("v2f", res.v2f)]
+    cols = st.columns(4)
+    for c, (lab, vt) in zip(cols, vel):
+        c.metric(f"{lab} (m/s)", F.valor_inc(vt.media, vt.incertidumbre) if vt else "—")
+    filas = []
+    for lab, vt in vel:
+        if vt is None:
+            continue
+        tr = res.antes if lab.endswith("i") else res.despues
+        filas.append({"velocidad": lab, "desde (s)": F.num(tr.t_ini, 3),
+                      "hasta (s)": F.num(tr.t_fin, 3), "puntos": vt.n,
+                      "promedio (m/s)": F.num(vt.media, 4),
+                      "desv. estándar (m/s)": F.num(vt.desv, 4),
+                      "resolución (m/s)": F.num(vt.resolucion, 4),
+                      "incertidumbre": F.valor_inc(vt.media, vt.incertidumbre)})
+    st.dataframe(pd.DataFrame(filas), hide_index=True, width="stretch")
+    st.caption(
+        "Incertidumbre = la desviación estándar de los puntos del tramo o la "
+        "resolución, la mayor, redondeada a una cifra significativa. La "
+        "resolución es lo que cambia una velocidad cuadro a cuadro al mover un "
+        "punto un píxel (escala ÷ 2Δt).")
+
+    # --- Gráfico como el de la guía ---------------------------------------
+    ta, va = velocidad(t1, x1)
+    series = [(nombres[0], ta, va * res.signo)]
+    if hay2:
+        tb, vb = velocidad(t2, x2)
+        series.append((nombres[1], tb, vb * res.signo))
+    fig = go.Figure()
+    for tr in (res.antes, res.despues):
+        fig.add_vrect(x0=tr.t_ini, x1=tr.t_fin, fillcolor="#0E7490", opacity=0.08,
+                      line_width=0)
+    for i, (nombre, tt, vv) in enumerate(series):
+        fig.add_trace(go.Scatter(x=tt, y=vv, mode="markers", name=nombre,
+                                 marker=dict(symbol=["circle", "triangle-up"][i % 2])))
+    for lab, vt in vel:
+        if vt is not None and np.isfinite(vt.media):
+            tr = res.antes if lab.endswith("i") else res.despues
+            fig.add_shape(type="line", x0=tr.t_ini, x1=tr.t_fin, y0=vt.media,
+                          y1=vt.media, line=dict(dash="dash", color="#475569"))
+            fig.add_annotation(x=(tr.t_ini + tr.t_fin) / 2, y=vt.media, text=lab,
+                               showarrow=False, yshift=10)
+    fig.add_vline(x=res.t_choque, line_dash="dot", line_color="#94A3B8")
+    _layout_es(fig, title="Velocidad con signo (tramos promediados sombreados)",
+               xaxis_title="t (s)", yaxis_title="velocidad (m/s)", height=400)
+    st.plotly_chart(fig, width="stretch")
+    st.download_button("⬇️ Descargar este gráfico (PNG)",
+                       export_mod.fig_colision(res, series),
+                       f"colision_{os.path.splitext(archivo)[0]}.png", "image/png",
+                       key="dl_colision")
+
+    for a in res.avisos:
+        st.warning(a, icon="⚠️")
+    for nombre, ts, dentro in res.saltos_extra:
+        if not dentro:
+            st.caption(f"ℹ️ Hay un salto de velocidad del {nombre} en t ≈ "
+                       f"{F.num(ts, 2)} s (¿choque con un tope?), fuera de los "
+                       "tramos promediados: no afecta el resultado.")
+
+    # --- Masas y magnitudes de la guía -----------------------------------
+    st.markdown("#### Momentum, energía y coeficiente de restitución")
+    st.caption("Masas de la tabla de registro. En los bloques C y D, m2 es el "
+               "carro 2 **más** la masa adicional.")
+    m1c, m2c = st.columns(2)
+    st.session_state.m1_g = m1c.number_input("m1 (g)", min_value=0.0, step=0.1,
+                                             value=float(st.session_state.m1_g),
+                                             format="%.1f", key="in_m1")
+    st.session_state.m2_g = m2c.number_input("m2 (g)", min_value=0.0, step=0.1,
+                                             value=float(st.session_state.m2_g),
+                                             format="%.1f", key="in_m2")
+    v = res.velocidades
+    calc = None
+    if not hay2:
+        st.info("Sin el carro 2 no se pueden calcular p, K ni C_R.")
+    elif st.session_state.m1_g > 0 and st.session_state.m2_g > 0:
+        calc = calculos_colision(st.session_state.m1_g / 1000.0,
+                                 st.session_state.m2_g / 1000.0, **v)
+        k1, k2, k3, k4 = st.columns(4)
+        k1.metric("p_i (kg·m/s)", F.num(calc.p_i, 4))
+        k2.metric("p_f (kg·m/s)", F.num(calc.p_f, 4))
+        k3.metric("Δp = p_f − p_i (kg·m/s)", F.num(calc.dp, 4))
+        k4.metric("Δp/p_i (%)", F.num(calc.dp_rel * 100, 1))
+        k5, k6, k7, _ = st.columns(4)
+        k5.metric("K_i (J)", F.num(calc.K_i, 4))
+        k6.metric("K_f (J)", F.num(calc.K_f, 4))
+        k7.metric("C_R", F.num(calc.C_R, 3))
+        if calc.p_i_pequeno:
+            st.warning(
+                "**p_i casi se anula** (los carros parten en sentidos opuestos, "
+                "como en los bloques B y D): Δp/p_i puede parecer grande aunque Δp "
+                "sea pequeño. Reporta siempre ambos, Δp en kg·m/s y Δp/p_i en %.",
+                icon="⚠️")
+        st.caption("p = m1·v1 + m2·v2 · K = ½·m1·v1² + ½·m2·v2² · "
+                   "C_R = −(v2f − v1f)/(v2i − v1i). Sin propagación formal de "
+                   "incertidumbres, como pide la guía.")
+    else:
+        den = v["v2i"] - v["v1i"]
+        cr = -(v["v2f"] - v["v1f"]) / den if den else float("nan")
+        st.metric("C_R (no necesita las masas)", F.num(cr, 3))
+        st.info("Escribe m1 y m2 para calcular p_i, p_f, Δp, Δp/p_i, K_i y K_f.")
+
+    # --- Guardar el ensayo -------------------------------------------------
+    st.markdown("#### Guardar este ensayo en la tabla del grupo")
+    n_def = ensayo_desde_nombre(archivo)
+    e1, e2, e3 = st.columns([1, 1, 2])
+    ensayo = e1.number_input("Ensayo", min_value=1, max_value=99,
+                             value=int(n_def or 1), step=1, key=f"ens_n::{archivo}")
+    bloques = ["A", "B", "C", "D"]
+    b_def = bloque_de_ensayo(int(ensayo)) or "A"
+    bloque = e2.selectbox("Bloque", bloques, index=bloques.index(b_def),
+                          key=f"ens_b::{archivo}::{int(ensayo)}")
+    e3.caption(f"Plan de la guía: A = ensayos 1–3, B = 4–6, C = 7–9, D = 10–12. "
+               f"Archivo: `{archivo}`.")
+    if st.button("➕ Guardar este ensayo en la tabla", type="primary",
+                 key="ens_guardar", disabled=not hay2):
+        fila = fila_fis101(int(ensayo), bloque, archivo, res,
+                           st.session_state.m1_g or None, st.session_state.m2_g or None,
+                           calc)
+        st.session_state.tabla_fis101 = ordenar_fis101(normalizar(
+            reemplazar_fila(st.session_state.tabla_fis101, fila), COLUMNAS_FIS101))
+        st.session_state["_ens_flash"] = f"Ensayo {int(ensayo)} guardado."
+        st.rerun()
+    flash = st.session_state.pop("_ens_flash", None)
+    if flash:
+        st.success(flash)
+
+    tabla = st.session_state.tabla_fis101
+    _importar_tabla("ens_csv_up", COLUMNAS_FIS101, "tabla_fis101", ordenar_fis101)
+    if not tabla.empty:
+        st.markdown(f"**Tabla de ensayos ({len(tabla)})**")
+        st.dataframe(_tabla_es(tabla, FMT_FIS101), hide_index=True, width="stretch")
+        c1, c2 = st.columns(2)
+        c1.download_button("⬇️ Descargar la tabla de ensayos (CSV)", F.csv_es(tabla),
+                           "fis101_lab3_ensayos.csv", "text/csv", width="stretch",
+                           key="ens_dl")
+        c2.button("📈 Ir al análisis de grupo", width="stretch", key="nav_ens_grupo",
+                  on_click=_set_goto, args=(ETAPA_GRUPO,))
+
+
+def _flujo_orbita(kdf: pd.DataFrame) -> None:
+    """FIS301 Lab 3: rapidez cuadro a cuadro, tramo estable y radio de la órbita."""
+    calib = st.session_state.calibration
+    archivo = st.session_state.get("_uploaded_name") or "video"
+    table: TrackTable = st.session_state.track
+
+    with st.expander("📍 Marcar la mina alrededor de la que gira el trazador",
+                     expanded=st.session_state.mina_px is None):
+        st.caption("Haz clic sobre la mina (el punto oscuro). Con ella se calcula la "
+                   "distancia del trazador a la mina en cada cuadro. Con la cámara "
+                   "fija se conserva para los videos siguientes.")
+        frame = reader.get_frame(int(st.session_state.proc_start))
+        img = annotate_track(frame, table, -1)
+        if st.session_state.mina_px:
+            mx, my = (int(v) for v in st.session_state.mina_px)
+            cv2.drawMarker(img, (mx, my), (255, 0, 255), cv2.MARKER_STAR,
+                           max(14, meta.width // 40), max(2, meta.width // 400))
+        value = streamlit_image_coordinates(
+            fit_display(img), width=min(DISPLAY_WIDTH, meta.width),
+            key="mina_clicker", cursor="crosshair")
+        if value is not None and value != st.session_state._mina_last_click:
+            st.session_state._mina_last_click = value
+            pt = click_to_original(value, meta.width)
+            if pt is not None:
+                st.session_state.mina_px = pt
+                st.rerun()
+        if st.session_state.mina_px and st.button("🧹 Quitar la mina", key="mina_borrar"):
+            st.session_state.mina_px = None
+            st.rerun()
+
+    t = kdf["t"].to_numpy()
+    x = kdf["x_m"].to_numpy()
+    y = kdf["y_m"].to_numpy()
+    mina = calib.to_meters(*st.session_state.mina_px) if st.session_state.mina_px else None
+    res_v = _resolucion_v()
+    try:
+        res = analizar_orbita(t, x, y, mina=mina, resolucion=res_v)
+    except ValueError as e:
+        st.error(str(e))
+        return
+    with st.expander("✋ Elegir a mano el tramo de giro estable"):
+        st.caption("Por defecto se descarta el arranque: los cuadros del comienzo "
+                   "en que la rapidez todavía no llega a su valor de régimen.")
+        if st.checkbox("Usar mis propios límites", key="orb_manual") and len(t) > 2:
+            dt = float(np.median(np.diff(t)))
+            a = _slider_tramo("Tramo de giro estable (s)", t.min(), t.max(),
+                              Tramo(res.t_ini, res.t_fin), dt,
+                              f"orb_tramo::{archivo}:{len(t)}")
+            try:
+                res = analizar_orbita(t, x, y, mina=mina, t_ini=a[0], t_fin=a[1],
+                                      resolucion=res_v)
+            except ValueError as e:
+                st.error(str(e))
+                return
+
+    mm = 1000.0
+    st.caption(f"Tramo de giro estable: {F.num(res.t_ini, 2)}–{F.num(res.t_fin, 2)} s "
+               f"({res.n} cuadros, {F.num(res.vueltas, 2)} vueltas, sentido "
+               f"{res.sentido} visto desde arriba).")
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("v (mm/s)", F.valor_inc(res.rapidez_media * mm, res.incertidumbre * mm))
+    m2.metric("s_v (mm/s)", F.cifras(res.rapidez_desv * mm, 2))
+    m3.metric("Resolución (mm/s)", F.cifras(res.resolucion * mm, 2))
+    m4.metric("Cuadros (N)", res.n)
+    r1, r2, r3, r4 = st.columns(4)
+    r1.metric("Radio de la órbita r (mm)",
+              F.valor_inc(res.radio_medio * mm, res.radio_desv * mm))
+    r2.metric("Distancia a la mina (mm)",
+              F.valor_inc(res.dist_mina_media * mm, res.dist_mina_desv * mm)
+              if mina is not None else "marca la mina")
+    r3.metric("Vueltas", F.num(res.vueltas, 2))
+    r4.metric("Control ω·R (mm/s)", F.cifras(res.rapidez_angular * mm, 3))
+    st.caption(
+        "**v** es el promedio de la rapidez cuadro a cuadro en el tramo estable y "
+        "**s_v** su desviación estándar (1/(N−1)); la incertidumbre de v es s_v o "
+        "la resolución (1 px en 2Δt), la mayor. **r** es la distancia media al "
+        "centro del círculo ajustado, con su desviación estándar: debe ser "
+        "parecida entre puntos. **ω·R** sale del ángulo barrido y sirve de "
+        "control: si difiere mucho de v, el seguimiento es ruidoso.")
+    for a in res.avisos:
+        st.warning(a, icon="⚠️")
+
+    v = rapidez(t, x, y)
+    sel = (t >= res.t_ini - 1e-9) & (t <= res.t_fin + 1e-9)
+    g1, g2 = st.columns([1, 1.3])
+    with g1:
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=x[~sel] * mm, y=y[~sel] * mm, mode="markers",
+                                 name="fuera del tramo", marker=dict(color="#CBD5E1", size=4)))
+        fig.add_trace(go.Scatter(x=x[sel] * mm, y=y[sel] * mm, mode="markers",
+                                 name="tramo estable", marker=dict(size=4)))
+        th = np.linspace(0, 2 * np.pi, 200)
+        c = res.circulo
+        fig.add_trace(go.Scatter(x=(c.cx + c.r * np.cos(th)) * mm,
+                                 y=(c.cy + c.r * np.sin(th)) * mm, mode="lines",
+                                 name="círculo ajustado"))
+        if mina is not None:
+            fig.add_trace(go.Scatter(x=[mina[0] * mm], y=[mina[1] * mm], mode="markers",
+                                     name="mina", marker=dict(symbol="star", size=14,
+                                                              color="black")))
+        _layout_es(fig, title="Órbita", xaxis_title="x (mm)", yaxis_title="y (mm)",
+                   height=380)
+        fig.update_yaxes(scaleanchor="x", scaleratio=1)
+        st.plotly_chart(fig, width="stretch")
+    with g2:
+        fig = go.Figure()
+        fig.add_vrect(x0=res.t_ini, x1=res.t_fin, fillcolor="#0E7490", opacity=0.08,
+                      line_width=0)
+        fig.add_trace(go.Scatter(x=t, y=v * mm, mode="lines+markers", name="rapidez",
+                                 marker=dict(size=4)))
+        fig.add_hline(y=res.rapidez_media * mm, line_dash="dash")
+        dist = np.hypot(x - c.cx, y - c.cy) * mm
+        fig.add_trace(go.Scatter(x=t, y=dist, mode="lines", name="radio (mm)",
+                                 yaxis="y2", line=dict(width=1)))
+        _layout_es(fig, title="Rapidez cuadro a cuadro y radio", xaxis_title="t (s)",
+                   yaxis_title="rapidez (mm/s)", height=380,
+                   yaxis2=dict(title="radio (mm)", overlaying="y", side="right"))
+        st.plotly_chart(fig, width="stretch")
+    st.download_button("⬇️ Descargar la figura de la órbita (PNG)",
+                       export_mod.fig_orbita(res, t, x, y, v),
+                       f"orbita_{os.path.splitext(archivo)[0]}.png", "image/png",
+                       key="dl_orbita")
+
+    # --- Agregar a la tabla del lote ------------------------------------
+    st.markdown("#### Agregar este video a la tabla resumen")
+    b_def, V_def = nombre_fis301(archivo)
+    bloques = ["D0", "D1", "D2"]
+    c1, c2, c3 = st.columns(3)
+    bloque = c1.selectbox("Bloque", bloques,
+                          index=bloques.index(b_def) if b_def in bloques else 0,
+                          key=f"orb_b::{archivo}")
+    voltaje = c2.number_input("V (V)", min_value=0.0, max_value=30.0, step=2.0,
+                              value=float(V_def if V_def is not None else 10.0),
+                              key=f"orb_V::{archivo}")
+    corriente = c3.number_input("I (mA), de tu registro", min_value=0.0, step=0.1,
+                                value=0.0, format="%.1f", key=f"orb_I::{archivo}")
+    if b_def is None:
+        st.caption("El nombre del archivo no sigue la convención `D0_20V.mp4`: "
+                   "revisa el bloque y el voltaje.")
+    if st.button("➕ Agregar a la tabla del lote", type="primary", key="orb_guardar"):
+        fila = fila_fis301(archivo, res, corriente_mA=corriente or None,
+                           bloque=bloque, voltaje=voltaje)
+        st.session_state.tabla_fis301 = ordenar_fis301(normalizar(
+            reemplazar_fila(st.session_state.tabla_fis301, fila), COLUMNAS_FIS301))
+        pts = [(p.frame_idx, p.t, p.x_px, p.y_px) for p in table.points
+               if st.session_state.proc_start <= p.frame_idx <= st.session_state.proc_end]
+        st.session_state.lote_crudos[archivo] = _datos_crudos_orbita(pts, calib)
+        st.session_state.lote_res[archivo] = (res, t, x, y, v)
+        st.session_state["lote_ver"] = st.session_state.get("lote_ver", 0) + 1
+        st.session_state["_orb_flash"] = f"{archivo} agregado a la tabla del lote."
+        st.rerun()
+    flash = st.session_state.pop("_orb_flash", None)
+    if flash:
+        st.success(flash)
+    n = len(st.session_state.tabla_fis301)
+    if n:
+        st.caption(f"La tabla del lote tiene {n} video(s).")
+        nav_button("🌀 Ver la tabla del lote", ETAPA_LOTE, key="nav_orb_lote",
+                   tipo="secondary")
+
+
+# --------------------------------------------------------------------------
 # Etapa 6 · Exportar
 # --------------------------------------------------------------------------
 def stage_export() -> None:
@@ -2814,9 +3987,35 @@ def stage_export() -> None:
                 key=f"dl_{fname}",
             )
 
+    # --- Varios objetos: CSV con todos y gráfico de velocidades ------------
+    objetos_con_datos = {}
+    for nombre, tabla in st.session_state.objetos.items():
+        d = _datos_objeto(nombre)
+        if d is not None and len(d) >= 2:
+            objetos_con_datos[nombre] = kinematics_dataframe(
+                d, smooth=st.session_state.kin_smooth,
+                window=int(st.session_state.kin_window),
+                polyorder=int(st.session_state.kin_poly))
+    multi = len(objetos_con_datos) > 1
+    if multi:
+        st.markdown("#### Todos los objetos")
+        png_multi = export_mod.fig_velocidad_objetos(objetos_con_datos)
+        st.image(png_multi, caption="Velocidad vx de todos los objetos",
+                 width="stretch")
+        st.download_button("⬇️ Descargar velocidad_objetos.png", png_multi,
+                           "velocidad_objetos.png", "image/png", width="stretch",
+                           key="dl_multi")
+        st.caption(f"Las figuras de arriba son del objeto activo "
+                   f"(**{st.session_state.objeto_activo}**). El CSV trae todos los "
+                   "objetos, una fila por frame.")
+
     # --- Datos ---------------------------------------------------------------
     st.markdown("#### Datos")
-    csv_bytes = export_mod.dataframe_to_csv_bytes(kdf)
+    if multi:
+        csv_bytes = export_mod.dataframe_to_csv_bytes(
+            export_mod.datos_multiobjeto(objetos_con_datos))
+    else:
+        csv_bytes = export_mod.dataframe_to_csv_bytes(kdf)
     d1, d2 = st.columns(2)
     d1.download_button(
         "⬇️ Descargar tabla de datos (CSV)",
@@ -2824,8 +4023,8 @@ def stage_export() -> None:
         file_name="datos_tracker_uai.csv",
         mime="text/csv",
         width="stretch",
-        help="Se abre directo en Excel: incluye tiempo, posición, velocidad y "
-        "aceleración.",
+        help="Se abre directo en Excel en español («;» como separador y coma "
+        "decimal): incluye tiempo, posición, velocidad y aceleración.",
     )
     d2.download_button(
         "⬇️ Descargar TODO en un ZIP",
