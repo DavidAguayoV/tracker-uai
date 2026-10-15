@@ -6,8 +6,9 @@ o borrar puntos.
 
 Este módulo es independiente de Streamlit.
 
-TODO (v2): tracking automático (seguimiento por color u optical flow)
-para no tener que marcar frame a frame. Ver core/tracking.py.
+El seguimiento automático está en ``core/autotrack.py`` (un objeto) y
+``core/seguimiento.py`` (varios objetos y trazadores pequeños). Con varios
+objetos, la app guarda una ``TrackTable`` por objeto.
 """
 
 from __future__ import annotations
