@@ -188,10 +188,14 @@ class VideoReader:
         loaded = 0
         total = max(end - start + 1, 1)
         while i <= end and len(self._cache_order) < self._cache_max:
-            ts = float(self.cap.get(cv2.CAP_PROP_POS_MSEC))  # timestamp del frame i
             ok, frame = self.cap.read()
             if not ok or frame is None:
                 break
+            # Timestamp del frame i: se lee DESPUÉS de leerlo. Antes de read(),
+            # CAP_PROP_POS_MSEC entrega el del frame anterior, lo que corría
+            # todos los tiempos un cuadro y dejaba a los frames 1 y 2 con el
+            # mismo t (velocidad infinita al derivar).
+            ts = float(self.cap.get(cv2.CAP_PROP_POS_MSEC))
             self._last_idx = i
             if (i - start) % step == 0:
                 self._cache_put(i, cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
